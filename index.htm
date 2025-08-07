@@ -359,7 +359,7 @@
                         });
                     }
                 }
-                log('[Sun Path] Calculation complete.');
+                log('[Sun Path] Calculation complete. Points:', sunPathPoints.length);
                 loadingMessage.classList.add('hidden');
             };
 
@@ -371,6 +371,9 @@
                 const halfFOV_H = horizontalFOV / 2;
                 const halfFOV_V = verticalFOV / 2;
                 
+                // Log current sensor data for debugging
+                log(`[Debug] Heading: ${heading.toFixed(2)}, Pitch: ${pitch.toFixed(2)}`);
+
                 // Convert current heading and pitch to a range of -180 to 180 for easier calculations
                 const currentHeading = (heading + 180) % 360 - 180;
                 // Pitch is typically -90 to 90. Map this to -45 to 45 for vertical FOV.
@@ -379,6 +382,7 @@
                 // Draw the horizon line
                 const horizonRelativeAltitude = 0 - currentPitch;
                 if (Math.abs(horizonRelativeAltitude) < halfFOV_V) {
+                    log(`[Draw] Drawing horizon. Relative altitude: ${horizonRelativeAltitude.toFixed(2)}`);
                     const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
                     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
                     ctx.lineWidth = 2;
@@ -386,34 +390,39 @@
                     ctx.moveTo(0, horizonY);
                     ctx.lineTo(canvasElement.width, horizonY);
                     ctx.stroke();
+                } else {
+                    log(`[Draw] Horizon not in view. Relative altitude: ${horizonRelativeAltitude.toFixed(2)}`);
                 }
 
                 // Draw the sun path line
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                
-                sunPathPoints.forEach((point, index) => {
-                    let relativeAzimuth = point.azimuth - currentHeading;
-                    // Wrap azimuth to be within the FOV
-                    if (relativeAzimuth > 180) relativeAzimuth -= 360;
-                    if (relativeAzimuth < -180) relativeAzimuth += 360;
-
-                    let relativeAltitude = point.altitude - currentPitch;
+                if (sunPathPoints.length > 0) {
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
                     
-                    if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
-                        const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                        const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                    sunPathPoints.forEach((point, index) => {
+                        let relativeAzimuth = point.azimuth - currentHeading;
+                        // Wrap azimuth to be within the FOV
+                        if (relativeAzimuth > 180) relativeAzimuth -= 360;
+                        if (relativeAzimuth < -180) relativeAzimuth += 360;
+
+                        let relativeAltitude = point.altitude - currentPitch;
                         
-                        if (index === 0) {
-                            ctx.moveTo(x, y);
-                        } else {
-                            ctx.lineTo(x, y);
+                        if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
+                            const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                            const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                            
+                            if (index === 0) {
+                                ctx.moveTo(x, y);
+                            } else {
+                                ctx.lineTo(x, y);
+                            }
+                            log(`[Draw] Sun path point drawn at x:${x.toFixed(2)}, y:${y.toFixed(2)}`);
                         }
-                    }
-                });
-                ctx.stroke();
-                
+                    });
+                    ctx.stroke();
+                }
+
                 // Add time labels to the sun path
                 ctx.fillStyle = "white";
                 ctx.textAlign = "center";
@@ -450,6 +459,7 @@
                 let currentRelativeAltitude = currentSunPos.altitude - currentPitch;
 
                 if (Math.abs(currentRelativeAzimuth) < halfFOV_H && Math.abs(currentRelativeAltitude) < halfFOV_V) {
+                    log(`[Draw] Current sun drawn at relative pos: az:${currentRelativeAzimuth.toFixed(2)}, alt:${currentRelativeAltitude.toFixed(2)}`);
                     const x = (currentRelativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
                     const y = (-currentRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
                     
@@ -466,6 +476,8 @@
                     ctx.fillStyle = "white";
                     ctx.textAlign = "center";
                     ctx.fillText("☀️ Sun", x, y - 20);
+                } else {
+                    log(`[Draw] Current sun not in view. Relative pos: az:${currentRelativeAzimuth.toFixed(2)}, alt:${currentRelativeAltitude.toFixed(2)}`);
                 }
                 
                 animationFrameId = requestAnimationFrame(drawArOverlay);
@@ -476,7 +488,13 @@
                     cancelAnimationFrame(animationFrameId);
                 }
                 calculateSunPath();
-                drawArOverlay();
+                // Ensure sun path is ready before starting the loop
+                if (sunPathPoints.length > 0) {
+                    drawArOverlay();
+                } else {
+                    // If no points are calculated (e.g., at night), just show a message.
+                    showMessage("Sun path could not be calculated. This may be due to nighttime or an error with your location data.");
+                }
             };
             
             // The main entry point to the app
