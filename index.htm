@@ -213,6 +213,7 @@
             let longitude = null;
             let heading = 0; // Device heading (alpha)
             let pitch = 0; // Device tilt (beta)
+            let hasDeviceMotion = false; // New flag to track if we've received any sensor data
             const horizontalFOV = 60; // Assumed camera horizontal field of view
             const verticalFOV = 45;   // Assumed camera vertical field of view
             let sunPathPoints = [];
@@ -310,6 +311,8 @@
                     // Update heading and pitch from device sensors. Alpha is compass heading, Beta is tilt.
                     heading = event.alpha !== null ? event.alpha : heading;
                     pitch = event.beta !== null ? event.beta : pitch;
+                    hasDeviceMotion = true; // Set flag to true when we receive data
+                    log(`[Sensor Data] Heading: ${heading.toFixed(2)}, Pitch: ${pitch.toFixed(2)}`);
                 };
 
                 // Handle iOS 13+ permission request
@@ -370,114 +373,122 @@
                 
                 const halfFOV_H = horizontalFOV / 2;
                 const halfFOV_V = verticalFOV / 2;
-                
-                // Log current sensor data for debugging
-                log(`[Debug] Heading: ${heading.toFixed(2)}, Pitch: ${pitch.toFixed(2)}`);
 
-                // Convert current heading and pitch to a range of -180 to 180 for easier calculations
-                const currentHeading = (heading + 180) % 360 - 180;
-                // Pitch is typically -90 to 90. Map this to -45 to 45 for vertical FOV.
-                const currentPitch = pitch;
-
-                // Draw the horizon line
-                const horizonRelativeAltitude = 0 - currentPitch;
-                if (Math.abs(horizonRelativeAltitude) < halfFOV_V) {
-                    log(`[Draw] Drawing horizon. Relative altitude: ${horizonRelativeAltitude.toFixed(2)}`);
-                    const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(0, horizonY);
-                    ctx.lineTo(canvasElement.width, horizonY);
-                    ctx.stroke();
-                } else {
-                    log(`[Draw] Horizon not in view. Relative altitude: ${horizonRelativeAltitude.toFixed(2)}`);
-                }
-
-                // Draw the sun path line
-                if (sunPathPoints.length > 0) {
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    
-                    sunPathPoints.forEach((point, index) => {
-                        let relativeAzimuth = point.azimuth - currentHeading;
-                        // Wrap azimuth to be within the FOV
-                        if (relativeAzimuth > 180) relativeAzimuth -= 360;
-                        if (relativeAzimuth < -180) relativeAzimuth += 360;
-
-                        let relativeAltitude = point.altitude - currentPitch;
-                        
-                        if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
-                            const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                            const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                            
-                            if (index === 0) {
-                                ctx.moveTo(x, y);
-                            } else {
-                                ctx.lineTo(x, y);
-                            }
-                            log(`[Draw] Sun path point drawn at x:${x.toFixed(2)}, y:${y.toFixed(2)}`);
-                        }
-                    });
-                    ctx.stroke();
-                }
-
-                // Add time labels to the sun path
-                ctx.fillStyle = "white";
-                ctx.textAlign = "center";
-                ctx.font = "bold 12px sans-serif";
-                
-                sunPathPoints.forEach(point => {
-                    const hour = point.time.getHours();
-                    // Label every 3 hours
-                    if (hour % 3 === 0) { 
-                        let relativeAzimuth = point.azimuth - currentHeading;
-                        if (relativeAzimuth > 180) relativeAzimuth -= 360;
-                        if (relativeAzimuth < -180) relativeAzimuth += 360;
-
-                        let relativeAltitude = point.altitude - currentPitch;
-                        
-                        if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
-                            const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                            const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                            const timeString = `${hour}h`;
-                            ctx.fillText(timeString, x, y - 10);
-                        }
-                    }
-                });
-
-
-                // Highlight the current sun position
-                const now = new Date();
-                const currentSunPos = getSunPosition(now, latitude, longitude);
-                
-                let currentRelativeAzimuth = currentSunPos.azimuth - currentHeading;
-                if (currentRelativeAzimuth > 180) currentRelativeAzimuth -= 360;
-                if (currentRelativeAzimuth < -180) currentRelativeAzimuth += 360;
-
-                let currentRelativeAltitude = currentSunPos.altitude - currentPitch;
-
-                if (Math.abs(currentRelativeAzimuth) < halfFOV_H && Math.abs(currentRelativeAltitude) < halfFOV_V) {
-                    log(`[Draw] Current sun drawn at relative pos: az:${currentRelativeAzimuth.toFixed(2)}, alt:${currentRelativeAltitude.toFixed(2)}`);
-                    const x = (currentRelativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                    const y = (-currentRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                    
-                    // Draw a glowing sun icon
-                    ctx.fillStyle = 'rgba(255, 200, 0, 1)';
-                    ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
-                    ctx.shadowBlur = 15;
-                    ctx.beginPath();
-                    ctx.arc(x, y, 15, 0, 2 * Math.PI);
-                    ctx.fill();
-                    ctx.shadowBlur = 0; // Reset shadow
-                    
-                    ctx.font = "bold 16px sans-serif";
+                if (!hasDeviceMotion) {
                     ctx.fillStyle = "white";
                     ctx.textAlign = "center";
-                    ctx.fillText("☀️ Sun", x, y - 20);
+                    ctx.font = "bold 18px sans-serif";
+                    ctx.fillText("Waiting for device motion data...", canvasElement.width / 2, canvasElement.height / 2);
+                    log('[Draw] No device motion data received. Waiting...');
                 } else {
-                    log(`[Draw] Current sun not in view. Relative pos: az:${currentRelativeAzimuth.toFixed(2)}, alt:${currentRelativeAltitude.toFixed(2)}`);
+                    // Log current sensor data for debugging
+                    log(`[Debug] Heading: ${heading.toFixed(2)}, Pitch: ${pitch.toFixed(2)}`);
+                    
+                    // Convert current heading and pitch to a range of -180 to 180 for easier calculations
+                    const currentHeading = heading;
+                    // Pitch is typically -90 to 90. Map this to -45 to 45 for vertical FOV.
+                    const currentPitch = pitch;
+
+                    // Draw the horizon line
+                    const horizonRelativeAltitude = 0 - currentPitch;
+                    if (Math.abs(horizonRelativeAltitude) < halfFOV_V) {
+                        log(`[Draw] Drawing horizon. Relative altitude: ${horizonRelativeAltitude.toFixed(2)}`);
+                        const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(0, horizonY);
+                        ctx.lineTo(canvasElement.width, horizonY);
+                        ctx.stroke();
+                    } else {
+                        log(`[Draw] Horizon not in view. Relative altitude: ${horizonRelativeAltitude.toFixed(2)}`);
+                    }
+
+                    // Draw the sun path line
+                    if (sunPathPoints.length > 0) {
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        
+                        sunPathPoints.forEach((point, index) => {
+                            let relativeAzimuth = point.azimuth - currentHeading;
+                            // Wrap azimuth to be within the FOV
+                            if (relativeAzimuth > 180) relativeAzimuth -= 360;
+                            if (relativeAzimuth < -180) relativeAzimuth += 360;
+
+                            let relativeAltitude = point.altitude - currentPitch;
+                            
+                            if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
+                                const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                                const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                                
+                                if (index === 0) {
+                                    ctx.moveTo(x, y);
+                                } else {
+                                    ctx.lineTo(x, y);
+                                }
+                                log(`[Draw] Sun path point drawn at x:${x.toFixed(2)}, y:${y.toFixed(2)}`);
+                            }
+                        });
+                        ctx.stroke();
+                    }
+
+                    // Add time labels to the sun path
+                    ctx.fillStyle = "white";
+                    ctx.textAlign = "center";
+                    ctx.font = "bold 12px sans-serif";
+                    
+                    sunPathPoints.forEach(point => {
+                        const hour = point.time.getHours();
+                        // Label every 3 hours
+                        if (hour % 3 === 0) { 
+                            let relativeAzimuth = point.azimuth - currentHeading;
+                            if (relativeAzimuth > 180) relativeAzimuth -= 360;
+                            if (relativeAzimuth < -180) relativeAzimuth += 360;
+
+                            let relativeAltitude = point.altitude - currentPitch;
+                            
+                            if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
+                                const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                                const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                                const timeString = `${hour}h`;
+                                ctx.fillText(timeString, x, y - 10);
+                            }
+                        }
+                    });
+
+
+                    // Highlight the current sun position
+                    const now = new Date();
+                    const currentSunPos = getSunPosition(now, latitude, longitude);
+                    
+                    let currentRelativeAzimuth = currentSunPos.azimuth - currentHeading;
+                    if (currentRelativeAzimuth > 180) currentRelativeAzimuth -= 360;
+                    if (currentRelativeAzimuth < -180) currentRelativeAzimuth += 360;
+
+                    let currentRelativeAltitude = currentSunPos.altitude - currentPitch;
+
+                    if (Math.abs(currentRelativeAzimuth) < halfFOV_H && Math.abs(currentRelativeAltitude) < halfFOV_V) {
+                        log(`[Draw] Current sun drawn at relative pos: az:${currentRelativeAzimuth.toFixed(2)}, alt:${currentRelativeAltitude.toFixed(2)}`);
+                        const x = (currentRelativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                        const y = (-currentRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                        
+                        // Draw a glowing sun icon
+                        ctx.fillStyle = 'rgba(255, 200, 0, 1)';
+                        ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
+                        ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 15, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.shadowBlur = 0; // Reset shadow
+                        
+                        ctx.font = "bold 16px sans-serif";
+                        ctx.fillStyle = "white";
+                        ctx.textAlign = "center";
+                        ctx.fillText("☀️ Sun", x, y - 20);
+                    } else {
+                        log(`[Draw] Current sun not in view. Relative pos: az:${currentRelativeAzimuth.toFixed(2)}, alt:${currentRelativeAltitude.toFixed(2)}`);
+                    }
                 }
                 
                 animationFrameId = requestAnimationFrame(drawArOverlay);
