@@ -64,6 +64,9 @@
             border-top-right-radius: 1rem;
             transform: translateY(100%);
             transition: transform 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
         #permission-buttons.active {
             transform: translateY(0);
@@ -153,7 +156,7 @@
         <div id="loading-message" class="hidden">Calculating sun path...</div>
         
         <!-- The permission button container at the bottom -->
-        <div id="permission-buttons" class="hidden flex flex-col items-center">
+        <div id="permission-buttons">
             <h1 id="app-name" class="text-3xl font-bold mb-2">SunTrack AR</h1>
             <p class="text-gray-400 mb-6" id="status-message">
                 Let's get started by getting your location.
