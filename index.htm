@@ -3,79 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>SunTrack AR • Path Only</title>
+    <title>SunTrack AR • Stable Path with Segments</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-        }
-        html, body {
             margin: 0; padding: 0;
             width: 100%; height: 100%;
             overflow: hidden;
-            background: #000;
-            color: #fff;
         }
         #app-container {
             position: relative;
-            width: 100%;
-            height: 100%;
+            width: 100%; height: 100%;
+            background-color: #000;
         }
         video, canvas {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             object-fit: cover;
         }
-        video { z-index: 0; }
-        canvas { z-index: 1; }
+        video { z-index: 0 }
+        canvas { z-index: 1 }
         #overlay-ui {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             z-index: 2;
-            pointer-events: none; /* Allows clicks to pass through to underlying elements if needed */
+            color: #fff;
+            pointer-events: none;
+        }
+        /* Style for the debug log container */
+        #debug {
+            max-height: 120px;
+            overflow-y: auto;
         }
     </style>
 </head>
 <body>
     <div id="app-container">
-        <video id="vid" playsinline autoplay muted class="absolute w-full h-full object-cover"></video>
-        <canvas id="cv" class="absolute w-full h-full"></canvas>
-
-        <!-- UI Overlay for status, debug logs, and controls -->
-        <div id="overlay-ui" class="flex flex-col h-full w-full justify-between p-4">
+        <video id="vid" playsinline autoplay muted></video>
+        <canvas id="cv"></canvas>
+        
+        <div id="overlay-ui" class="flex flex-col h-full justify-between p-4">
             <!-- Status Display -->
             <div id="status" class="self-end px-4 py-2 bg-gray-900 bg-opacity-70 text-white text-sm md:text-base rounded-lg shadow-lg pointer-events-auto">
                 Ready
             </div>
-            
-            <!-- Debug Logs -->
-            <pre id="debug" class="self-start max-h-40 md:max-h-60 mt-auto w-full md:w-1/2 overflow-y-auto p-2 md:p-4 bg-gray-900 bg-opacity-80 text-lime-400 font-mono text-xs md:text-sm rounded-lg shadow-lg pointer-events-auto">
-                [ready]
-            </pre>
 
-            <!-- Controls -->
-            <div id="controls" class="w-full flex justify-center gap-2 mt-2 pointer-events-auto">
-                <button id="btnCam" class="flex-1 max-w-[200px] bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
-                    Start Camera
-                </button>
-                <button id="btnGeo" disabled class="flex-1 max-w-[200px] bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
-                    Get Location
-                </button>
-                <button id="btnGyro" disabled class="flex-1 max-w-[200px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
-                    Enable Motion
-                </button>
-                <button id="btnAR" disabled class="flex-1 max-w-[200px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
-                    Start AR
+            <!-- UI Controls -->
+            <div id="controls" class="flex flex-col items-center gap-2 pointer-events-auto">
+                <div class="flex w-full justify-center gap-2">
+                    <button id="btnCam" class="flex-1 max-w-[200px] bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
+                        Start Camera
+                    </button>
+                    <button id="btnGeo" disabled class="flex-1 max-w-[200px] bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
+                        Get Location
+                    </button>
+                </div>
+                <div class="flex w-full justify-center gap-2">
+                    <button id="btnGyro" disabled class="flex-1 max-w-[200px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
+                        Enable Motion
+                    </button>
+                    <button id="btnAR" disabled class="flex-1 max-w-[200px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 shadow-lg disabled:bg-gray-700 disabled:text-gray-400">
+                        Start AR
+                    </button>
+                </div>
+                <button id="btnCopy" class="w-full max-w-[408px] bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 shadow-lg">
+                    Copy Logs
                 </button>
             </div>
+            
+            <!-- Debug Logs -->
+            <pre id="debug" class="self-start mt-2 w-full p-2 md:p-4 bg-gray-900 bg-opacity-80 text-lime-400 font-mono text-xs md:text-sm rounded-lg shadow-lg pointer-events-auto">
+                [ready]
+            </pre>
         </div>
     </div>
 
@@ -89,6 +93,7 @@
         const btnGeo = document.getElementById('btnGeo');
         const btnGyro = document.getElementById('btnGyro');
         const btnAR = document.getElementById('btnAR');
+        const btnCopy = document.getElementById('btnCopy');
 
         // State variables
         let stream, lat = null, lng = null;
@@ -105,6 +110,7 @@
 
         // Function to update the canvas dimensions and handle window resize
         const resizeCanvas = () => {
+            // Use fallback to window size if video dimensions aren't available yet
             cv.width = vid.videoWidth || window.innerWidth;
             cv.height = vid.videoHeight || window.innerHeight;
             if (ctx) {
@@ -140,9 +146,31 @@
         });
 
         // 2) Get Geolocation
-        btnGeo.addEventListener('click', () => {
+        btnGeo.addEventListener('click', async () => {
             statusEl.textContent = 'Getting location...';
-            // Request high-accuracy geolocation
+            
+            try {
+                // Use the Permissions API to check the state first
+                const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+
+                if (permissionStatus.state === 'granted') {
+                    log('✅ Geo permission granted');
+                    getAndSetLocation();
+                } else if (permissionStatus.state === 'prompt') {
+                    log('🤔 Geo permission pending...');
+                    // Calling getCurrentPosition() will trigger the prompt
+                    getAndSetLocation();
+                } else if (permissionStatus.state === 'denied') {
+                    statusEl.textContent = 'Location denied';
+                    log('❌ Geo permission DENIED');
+                }
+            } catch (error) {
+                statusEl.textContent = 'Permission error';
+                log('❌ Permission check ERR', error.message);
+            }
+        });
+
+        const getAndSetLocation = () => {
             navigator.geolocation.getCurrentPosition(p => {
                 lat = p.coords.latitude;
                 lng = p.coords.longitude;
@@ -157,11 +185,12 @@
                 enableHighAccuracy: true,
                 timeout: 10000
             });
-        });
+        };
 
         // 3) Enable Device Orientation (Gyro/Compass)
         const onDeviceOrientation = (e) => {
             // Determine heading (yaw) and pitch from device orientation event
+            // webkitCompassHeading is for older iOS; alpha is standard
             const h = e.webkitCompassHeading != null ? e.webkitCompassHeading : (360 - e.alpha);
             const p = e.beta - 90; // Adjust pitch so 0 is level
             
@@ -209,6 +238,17 @@
                 btnAR.disabled = false;
             }
         });
+        
+        // Copy logs
+        btnCopy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(dbgEl.textContent);
+                log('📋 Logs copied');
+            } catch (err) {
+                log('❌ Failed to copy logs', err);
+            }
+        });
+
 
         // --- AR Logic ---
 
@@ -258,30 +298,39 @@
             ctx.shadowColor = '#FFD700';
             ctx.shadowBlur = 10;
             ctx.beginPath();
-
-            let firstPoint = true;
-            sunPath.forEach(pt => {
+            
+            // Loop through sun path points to draw the line
+            let lastPointWasVisible = false;
+            sunPath.forEach((pt, i) => {
                 // Calculate relative azimuth and altitude based on device orientation
                 let rAz = pt.az - smoothH;
                 if (rAz > 180) rAz -= 360;
                 if (rAz < -180) rAz += 360;
                 const rAlt = pt.alt - smoothP;
 
-                // Check if the point is within the camera's view
-                if (Math.abs(rAz) <= halfH && Math.abs(rAlt) <= halfV) {
-                    // Map angular position to canvas coordinates
+                const isVisible = Math.abs(rAz) <= halfH && Math.abs(rAlt) <= halfV;
+
+                if (isVisible) {
                     const x = (0.5 + rAz / HFOV) * w;
                     const y = (0.5 - rAlt / vFOV) * h;
-                    
-                    if (firstPoint) {
+                    if (!lastPointWasVisible && i > 0) {
+                        // This is the first visible point of a new segment
                         ctx.moveTo(x, y);
-                        firstPoint = false;
                     } else {
+                        // Continue drawing the line
                         ctx.lineTo(x, y);
                     }
+                    lastPointWasVisible = true;
+                } else {
+                    // If a point goes out of view, stroke the current path and reset
+                    if (lastPointWasVisible) {
+                        ctx.stroke();
+                        ctx.beginPath(); // Start a new path for the next visible segment
+                    }
+                    lastPointWasVisible = false;
                 }
             });
-            ctx.stroke();
+            ctx.stroke(); // Ensure the final segment is stroked
             ctx.shadowBlur = 0; // Reset shadow for other drawings
 
             // Draw time labels every hour
@@ -303,6 +352,27 @@
                     }
                 }
             });
+
+            // Draw a marker for the current sun position
+            const now = new Date();
+            const currentPos = SunCalc.getPosition(now, lat, lng);
+            let currentRAz = (currentPos.azimuth * 180 / Math.PI + 360) % 360 - smoothH;
+            if (currentRAz > 180) currentRAz -= 360;
+            if (currentRAz < -180) currentRAz += 360;
+            const currentRAlt = currentPos.altitude * 180 / Math.PI - smoothP;
+
+            if (Math.abs(currentRAz) <= halfH && Math.abs(currentRAlt) <= halfV) {
+                const x = (0.5 + currentRAz / HFOV) * w;
+                const y = (0.5 - currentRAlt / vFOV) * h;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, 2 * Math.PI); // Draw a circle
+                ctx.fillStyle = '#FF4500'; // Orange-red color
+                ctx.fill();
+                ctx.shadowColor = '#FF4500';
+                ctx.shadowBlur = 10;
+            }
+            ctx.shadowBlur = 0; // Reset shadow
 
             // Request the next animation frame
             raf = requestAnimationFrame(draw);
