@@ -24,7 +24,7 @@
 </head>
 <body class="flex items-center justify-center h-screen overflow-hidden">
 
-    <div id="app-container" class="relative w-full h-full max-w-4xl max-h-[800px] bg-white rounded-3xl p-6 flex flex-col items-center justify-center text-center space-y-4 md:space-y-6">
+    <div id="app-container" class="relative w-full h-full bg-white rounded-3xl p-6 flex flex-col items-center justify-center text-center space-y-4 md:space-y-6">
 
         <h1 id="app-name" class="text-3xl md:text-5xl font-bold text-gray-800">
             Sunbath AR
@@ -85,7 +85,9 @@
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({
                         video: {
-                            facingMode: 'environment' // Use the back camera
+                            facingMode: 'environment', // Use the back camera
+                            width: { ideal: 1280 }, // Request higher resolution to favor the main camera
+                            height: { ideal: 720 }
                         }
                     });
                     videoElement.srcObject = stream;
@@ -173,9 +175,12 @@
             // Main function to start the application after user interaction
             function startApplication() {
                 loadingMessage.style.display = 'block'; // Show loading message
-                setupCamera();
-                setupGPS();
-                setupGyro();
+                // Use a short delay to ensure the user gesture is fully processed
+                setTimeout(() => {
+                    setupCamera();
+                    setupGPS();
+                    setupGyro();
+                }, 300);
             }
 
             // ---- Main AR Loop ----
