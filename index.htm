@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sunbath AR</title>
+    <title>SUNTRACK</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts for Poppins -->
@@ -27,13 +27,14 @@
     <div id="app-container" class="relative w-full h-full bg-white rounded-3xl p-6 flex flex-col items-center justify-center text-center space-y-4 md:space-y-6">
 
         <h1 id="app-name" class="text-3xl md:text-5xl font-bold text-gray-800">
-            Sunbath AR
+            SUNTRACK
         </h1>
         <p class="text-sm md:text-base text-gray-600">Follow the arrow to find the sun!</p>
 
         <!-- Video and Canvas for the AR effect -->
         <div id="video-container" class="relative w-full h-full rounded-2xl overflow-hidden bg-black border-4 border-gray-300">
-            <video id="videoElement" playsinline autoplay muted class="absolute top-0 left-0 w-full h-full object-cover"></video>
+            <!-- object-contain ensures the video maintains its aspect ratio, preventing a squeezed look -->
+            <video id="videoElement" playsinline autoplay muted class="absolute top-0 left-0 w-full h-full object-contain"></video>
             <canvas id="canvasElement" class="absolute top-0 left-0 w-full h-full"></canvas>
             
             <!-- This is now a clickable container to start the app -->
@@ -42,7 +43,7 @@
                 <p id="loadingMessage" class="text-sm md:text-base mt-2 hidden">Waiting for permissions...</p>
             </div>
             
-            <!-- Dedicated button for GPS permission -->
+            <!-- Dedicated button for GPS permission, now hidden by default -->
             <div id="gps-button" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2">
                 <button class="bg-gray-800 text-white py-2 px-4 rounded-full shadow-lg text-sm md:text-base hover:bg-gray-700 transition-colors">
                     Request GPS
@@ -53,7 +54,8 @@
         <!-- Status messages -->
         <div id="status-container" class="w-full text-left text-sm md:text-base">
             <p id="camera-status" class="text-red-600">Camera: Denied</p>
-            <p id="gps-status" class="text-red-600">GPS: Denied</p>
+            <!-- GPS status message is now a button to trigger permission requests -->
+            <button id="gps-status" class="text-red-600 text-left w-full cursor-pointer">GPS: Denied</button>
             <p id="gyro-status" class="text-red-600">Gyro: Denied</p>
         </div>
 
@@ -124,7 +126,10 @@
 
             // Function to request GPS access
             function setupGPS() {
-                gpsButton.style.display = 'none';
+                // Ensure the GPS status button is clickable and styled correctly
+                gpsStatus.textContent = 'GPS: Requesting...';
+                gpsStatus.classList.remove('text-red-600');
+                
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
                         (position) => {
@@ -138,8 +143,8 @@
                             checkAllPermissions();
                         },
                         (error) => {
-                            gpsStatus.textContent = 'GPS: Denied';
-                            gpsButton.style.display = 'block';
+                            gpsStatus.textContent = 'GPS: Denied - Tap to Enable';
+                            gpsStatus.classList.add('text-red-600', 'underline'); // Highlight the button to the user
                             console.error("Error accessing GPS: ", error);
                             showError("Please enable GPS for accurate sun position.");
                         }
@@ -195,7 +200,7 @@
 
             // Main function to start the application after user interaction
             function startPermissionRequests() {
-                startButton.textContent = 'Waiting for permissions...';
+                startButton.style.display = 'none';
                 loadingMessage.style.display = 'block'; // Show loading message
                 // Use a short delay to ensure the user gesture is fully processed
                 setTimeout(() => {
@@ -341,7 +346,8 @@
             
             // Add a click event listener to the start button
             startButton.addEventListener('click', startPermissionRequests);
-            gpsButton.addEventListener('click', setupGPS);
+            // This is the new, more direct way to trigger GPS permission
+            gpsStatus.addEventListener('click', setupGPS);
 
         });
     </script>
