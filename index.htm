@@ -312,7 +312,7 @@
                     heading = event.alpha !== null ? event.alpha : heading;
                     pitch = event.beta !== null ? event.beta : pitch;
                     hasDeviceMotion = true; // Set flag to true when we receive data
-                    log(`[Sensor Data] Heading: ${heading.toFixed(2)}, Pitch: ${pitch.toFixed(2)}`);
+                    // Removed verbose logging from the main loop
                 };
 
                 // Handle iOS 13+ permission request
@@ -348,14 +348,11 @@
                 sunPathPoints = [];
                 const now = new Date();
                 
-                // Calculate sun position every 15 minutes for a full day (24 hours * 60 minutes / 15 minute interval)
                 for (let i = 0; i < 96; i++) {
-                    // We need a loop for the full 24 hours to get the full path, even if the sun is down.
-                    const time = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0); // Start at midnight
+                    const time = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
                     time.setMinutes(i * 15);
                     const pos = getSunPosition(time, latitude, longitude);
                     
-                    // We now store all points, not just those above the horizon
                     sunPathPoints.push({
                         azimuth: pos.azimuth,
                         altitude: pos.altitude,
@@ -368,7 +365,6 @@
 
             // The main AR rendering loop
             const drawArOverlay = () => {
-                // Clear the canvas for a new frame
                 ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                 
                 const halfFOV_H = horizontalFOV / 2;
@@ -379,40 +375,35 @@
                     ctx.textAlign = "center";
                     ctx.font = "bold 18px sans-serif";
                     ctx.fillText("Waiting for device motion data...", canvasElement.width / 2, canvasElement.height / 2);
-                    log('[Draw] No device motion data received. Waiting...');
                 } else {
-                    // Log current sensor data for debugging
-                    // These logs are now less verbose to prevent flooding the log
-                    // log(`[Debug] Heading: ${heading.toFixed(2)}, Pitch: ${pitch.toFixed(2)}`);
-                    
                     const currentHeading = heading;
                     const currentPitch = pitch;
 
-                    // Draw the horizon line at all times, clamped to the view
+                    // Draw the horizon line
                     const horizonRelativeAltitude = 0 - currentPitch;
                     const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
                     
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; // More opaque
+                    ctx.lineWidth = 3; // Thicker line
                     ctx.beginPath();
-                    // Clamp the Y position to keep the line visible on the screen
                     const clampedHorizonY = Math.max(0, Math.min(canvasElement.height, horizonY));
                     ctx.moveTo(0, clampedHorizonY);
                     ctx.lineTo(canvasElement.width, clampedHorizonY);
                     ctx.stroke();
-                    log(`[Draw] Drawing horizon at y: ${clampedHorizonY.toFixed(2)}`);
+
+                    // Add a label to the horizon
+                    ctx.fillStyle = "white";
+                    ctx.textAlign = "center";
+                    ctx.font = "bold 16px sans-serif";
+                    ctx.fillText("Horizon", canvasElement.width / 2, clampedHorizonY - 15);
 
                     // Draw the sun path line
                     if (sunPathPoints.length > 0) {
-                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
                         ctx.lineWidth = 2;
                         
-                        let previousX = null;
-                        let previousY = null;
-
                         sunPathPoints.forEach((point, index) => {
                             let relativeAzimuth = point.azimuth - currentHeading;
-                            // Wrap azimuth to keep it within the FOV range for calculation
                             if (relativeAzimuth > 180) relativeAzimuth -= 360;
                             if (relativeAzimuth < -180) relativeAzimuth += 360;
 
@@ -421,33 +412,30 @@
                             const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
                             const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
 
-                            if (index > 0) {
-                                // Prevent drawing a line across the entire screen when the path wraps around
-                                if (Math.abs(sunPathPoints[index-1].azimuth - point.azimuth) > 180) {
-                                    ctx.stroke();
-                                    ctx.beginPath();
-                                    ctx.moveTo(x, y);
-                                } else {
-                                    ctx.lineTo(x, y);
-                                }
-                            } else {
+                            if (index === 0) {
                                 ctx.beginPath();
                                 ctx.moveTo(x, y);
-                            }
-                            
-                            // Draw time labels for every 3 hours
-                            const hour = point.time.getHours();
-                            if (hour % 3 === 0 && index > 0) { 
-                                ctx.fillStyle = "white";
-                                ctx.textAlign = "center";
-                                ctx.font = "bold 12px sans-serif";
-                                ctx.fillText(`${hour}h`, x, y - 10);
+                            } else {
+                                // Draw to the current point
+                                ctx.lineTo(x, y);
+
+                                // Draw time labels every 3 hours for clarity
+                                const hour = point.time.getHours();
+                                if (hour % 3 === 0 && Math.abs(x - (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width) < 5) {
+                                    ctx.save();
+                                    ctx.translate(x, y);
+                                    ctx.fillStyle = "white";
+                                    ctx.textAlign = "center";
+                                    ctx.font = "bold 12px sans-serif";
+                                    ctx.fillText(`${hour}h`, 0, -10);
+                                    ctx.restore();
+                                }
                             }
                         });
                         ctx.stroke();
                     }
 
-                    // Highlight the current sun position, even if it's out of view
+                    // Highlight the current sun position, with improved clamping indicator
                     const now = new Date();
                     const currentSunPos = getSunPosition(now, latitude, longitude);
                     
@@ -457,40 +445,51 @@
 
                     const currentRelativeAltitude = currentSunPos.altitude - currentPitch;
                     
-                    // Always calculate position, then clamp it to the canvas boundaries
                     let sunX = (currentRelativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
                     let sunY = (-currentRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
                     
-                    // Clamp the sun's position to the canvas edges for a persistent indicator
                     const isSunVisible = (sunX >= 0 && sunX <= canvasElement.width && sunY >= 0 && sunY <= canvasElement.height);
 
-                    if (!isSunVisible) {
-                        // If the sun is not in view, draw a smaller indicator on the edge
-                        const padding = 20;
-                        if (sunX < 0) { // Left edge
-                            sunX = padding;
-                        } else if (sunX > canvasElement.width) { // Right edge
-                            sunX = canvasElement.width - padding;
-                        }
-                        if (sunY < 0) { // Top edge
-                            sunY = padding;
-                        } else if (sunY > canvasElement.height) { // Bottom edge
-                            sunY = canvasElement.height - padding;
-                        }
-                    }
+                    const padding = 20;
 
-                    log(`[Draw] Current sun drawn at x:${sunX.toFixed(2)}, y:${sunY.toFixed(2)}`);
+                    if (!isSunVisible) {
+                        const originalSunX = sunX;
+                        const originalSunY = sunY;
+                        
+                        // Clamp the sun's position to the canvas edges for a persistent indicator
+                        sunX = Math.max(padding, Math.min(canvasElement.width - padding, sunX));
+                        sunY = Math.max(padding, Math.min(canvasElement.height - padding, sunY));
+
+                        // Draw a directional arrow
+                        ctx.save();
+                        ctx.translate(sunX, sunY);
+                        
+                        let angle = Math.atan2(originalSunY - sunY, originalSunX - sunX);
+                        if (angle < 0) angle += 2 * Math.PI;
+                        ctx.rotate(angle);
+                        
+                        // Draw a triangle pointing inward
+                        ctx.beginPath();
+                        ctx.moveTo(-10, -10);
+                        ctx.lineTo(10, 0);
+                        ctx.lineTo(-10, 10);
+                        ctx.closePath();
+                        ctx.fillStyle = 'rgba(255, 200, 0, 1)';
+                        ctx.fill();
+
+                        ctx.restore();
+                    }
 
                     // Draw a glowing sun icon
                     ctx.fillStyle = 'rgba(255, 200, 0, 1)';
                     ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
                     ctx.shadowBlur = 15;
                     ctx.beginPath();
-                    // Draw a slightly smaller sun if it's out of view
                     ctx.arc(sunX, sunY, isSunVisible ? 15 : 10, 0, 2 * Math.PI);
                     ctx.fill();
                     ctx.shadowBlur = 0; // Reset shadow
                     
+                    // Add a label
                     ctx.font = "bold 16px sans-serif";
                     ctx.fillStyle = "white";
                     ctx.textAlign = "center";
