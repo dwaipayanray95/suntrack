@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>SunTrack AR • Relative Hour Labels</title>
+  <title>SunTrack AR • Relative Hours Path</title>
   <style>
     html, body {
       margin:0; padding:0;
@@ -78,14 +78,16 @@
     let stream, lat=null, lng=null;
     let rawH=0, rawP=0, smoothH=0, smoothP=0;
     const SMOOTH = 0.12,
-          HFOV   = 65; // approx iPhone15 wide
-    let sunPath = [], ctx, raf;
+          HFOV   = 65;
+    let sunPath = [], ctx, raf, startBucket;
 
     // 1) Camera
     btnCam.addEventListener('click', async ()=>{
       try {
         status.textContent = 'Opening camera…';
-        stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ facingMode:'environment' }, audio:false
+        });
         vid.srcObject = stream;
         await vid.play();
         status.textContent = 'Camera OK';
@@ -119,8 +121,8 @@
       smoothH = smoothH*(1-SMOOTH)+rawH*SMOOTH;
       smoothP = smoothP*(1-SMOOTH)+rawP*SMOOTH;
       status.textContent = `H:${smoothH.toFixed(1)}° P:${smoothP.toFixed(1)}°`;
-      if(!onOri.last || Date.now()-onOri.last > 800){
-        log('↻ H:', smoothH.toFixed(1)+'°', 'P:', smoothP.toFixed(1)+'°');
+      if(!onOri.last || Date.now()-onOri.last>800){
+        log('↻ H:',smoothH.toFixed(1)+'°','P:',smoothP.toFixed(1)+'°');
         onOri.last = Date.now();
       }
     }
@@ -139,7 +141,7 @@
           }
         }).catch(e=>{
           status.textContent='Motion error';
-          log('❌ Gyro ERR', e);
+          log('❌ Gyro ERR',e);
         });
       } else {
         window.addEventListener('deviceorientation', onOri);
@@ -149,21 +151,22 @@
       }
     });
 
-    // compute full-day sun path with relative index
+    // compute full-day sun path and bucket start
     function computeSunPath(){
-      sunPath = [];
+      sunPath=[];
       const now = new Date();
+      startBucket = Math.round(now.getMinutes()/15);
       for(let i=0;i<96;i++){
-        const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const t = new Date(now.getFullYear(),now.getMonth(),now.getDate());
         t.setMinutes(i*15);
         const pos = SunCalc.getPosition(t, lat, lng);
         sunPath.push({
-          i, 
-          az : (pos.azimuth*180/Math.PI + 360) % 360,
-          alt: pos.altitude * 180/Math.PI
+          i, time:t,
+          az:(pos.azimuth*180/Math.PI+360)%360,
+          alt:pos.altitude*180/Math.PI
         });
       }
-      log('🎯 Sun path pts:', sunPath.length);
+      log('🎯 Sun path pts:',sunPath.length);
     }
 
     // draw path & relative-hour labels
@@ -178,33 +181,39 @@
       ctx.strokeStyle='white'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(w,y0); ctx.stroke();
 
-      // path segments (altitude>0)
+      // path segments
       ctx.strokeStyle='yellow'; ctx.lineWidth=2;
       let drawing=false;
       sunPath.forEach(pt=>{
-        if(pt.alt<=0){ if(drawing){ctx.stroke();drawing=false;} return; }
-        let rAz=pt.az - smoothH; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
+        if(pt.alt<=0) {
+          if(drawing){ ctx.stroke(); drawing=false; }
+          return;
+        }
+        let rAz=pt.az - smoothH;
+        if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
         let rAlt=pt.alt - smoothP;
         if(Math.abs(rAz)<=halfH && Math.abs(rAlt)<=halfV){
           const x=(0.5 + rAz/HFOV)*w;
           const y=(0.5 - rAlt/vFOV)*h;
-          if(!drawing){ctx.beginPath();ctx.moveTo(x,y);drawing=true;}
+          if(!drawing){ ctx.beginPath(); ctx.moveTo(x,y); drawing=true; }
           else ctx.lineTo(x,y);
-        } else if(drawing){ctx.stroke();drawing=false;}
+        } else if(drawing){
+          ctx.stroke(); drawing=false;
+        }
       });
       if(drawing) ctx.stroke();
 
-      // relative-hour labels every full hour
+      // relative-hour labels at same quarter-bucket
       ctx.fillStyle='white'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
       sunPath.forEach(pt=>{
-        if(pt.alt>0 && pt.i % 4 === 0){  // each 15min, so i%4==0 is each hour
-          const hr = pt.i/4;  // 0h,1h,...
+        if(pt.alt>0 && pt.i%4 === startBucket){
+          const delta = ((pt.i - startBucket + 96)%96)/4; // hours ahead
           let rAz=pt.az - smoothH; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
           let rAlt=pt.alt - smoothP;
           if(Math.abs(rAz)<=halfH && Math.abs(rAlt)<=halfV){
             const x=(0.5 + rAz/HFOV)*w;
             const y=(0.5 - rAlt/vFOV)*h;
-            ctx.fillText(`${hr}h`, x, y-8);
+            ctx.fillText(`+${delta.toFixed(0)}h`, x, y-8);
           }
         }
       });
