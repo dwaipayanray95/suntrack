@@ -3,38 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>SunTrack AR • Magnetic & Cardinal Logs</title>
+  <title>SunTrack AR • Magnetic & Roll-Corrected Horizon</title>
   <style>
     html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      overflow: hidden; background: #000; color: #fff;
-      font-family: sans-serif;
+      margin:0; padding:0;
+      width:100%; height:100%;
+      overflow:hidden;
+      background:#000; color:#fff;
+      font-family:sans-serif;
     }
     video, canvas {
-      position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%; object-fit: cover;
+      position:absolute; top:0; left:0;
+      width:100%; height:100%; object-fit:cover;
     }
-    video { z-index: 0; }
-    canvas { z-index: 1; }
+    video { z-index:0; }
+    canvas { z-index:1; }
     #debug {
-      position: fixed; top: env(safe-area-inset-top); left: 0; right: 0;
-      height: 140px; margin: 0; padding: 6px;
-      background: rgba(0,0,0,0.8); color: #0f8;
-      font-family: monospace; font-size: 12px;
-      overflow-y: auto; z-index: 3;
+      position:fixed; top:env(safe-area-inset-top); left:0; right:0;
+      height:140px; margin:0; padding:6px;
+      background:rgba(0,0,0,0.8); color:#0f8;
+      font-family:monospace; font-size:12px;
+      overflow-y:auto; z-index:3;
     }
     #controls {
-      position: fixed; bottom: env(safe-area-inset-bottom); left: 0; right: 0;
-      display: flex; gap: 4px; padding: 6px;
-      background: rgba(0,0,0,0.7); z-index: 3;
+      position:fixed; bottom:env(safe-area-inset-bottom); left:0; right:0;
+      display:flex; gap:4px; padding:6px;
+      background:rgba(0,0,0,0.7); z-index:3;
     }
     #controls button {
-      flex: 1; padding: 8px; font-size: 14px;
-      background: #222; color: #fff; border: none; border-radius: 4px;
-      cursor: pointer;
+      flex:1; padding:8px; font-size:14px;
+      background:#222; color:#fff; border:none; border-radius:4px;
+      cursor:pointer;
     }
-    #controls button:disabled { opacity: 0.4; }
+    #controls button:disabled { opacity:0.4; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
 </head>
@@ -59,77 +60,103 @@
           btnGyro= document.getElementById('btnGyro'),
           btnAR  = document.getElementById('btnAR'),
           btnCopy= document.getElementById('btnCopy'),
-          log    = (...msgs) => { dbg.textContent += msgs.join(' ') + '\n'; dbg.scrollTop = dbg.scrollHeight; };
+          log    = (...msgs) => {
+            dbg.textContent += msgs.join(' ') + '\n';
+            dbg.scrollTop = dbg.scrollHeight;
+          };
 
     let stream, lat=null, lng=null;
-    let rawH=0, rawP=0, smoothH=0, smoothP=0;
+    let rawH=0, rawP=0, rawG=0, smoothH=0, smoothP=0, smoothG=0;
     let sunPath=[], ctx;
+    let magX=null, magY=null, magZ=null;
 
-    const SMOOTH=0.15;
-    const HFOV=60; // horizontal field of view in degrees
+    const SMOOTH = 0.15,
+          HFOV   = 60; // horizontal FOV in degrees
 
-    function getCardinal(h) {
-      const dirs=['N','NE','E','SE','S','SW','W','NW'];
-      return dirs[Math.round(h/45) % 8];
+    // Magnetometer (if supported)
+    if ('Magnetometer' in window) {
+      try {
+        const sensor = new Magnetometer({ frequency: 10 });
+        sensor.addEventListener('reading', () => {
+          magX = sensor.x.toFixed(1);
+          magY = sensor.y.toFixed(1);
+          magZ = sensor.z.toFixed(1);
+        });
+        sensor.start();
+      } catch (e) {
+        log('⚠️ Magnetometer not available');
+      }
+    } else {
+      log('⚠️ Magnetometer unsupported');
     }
 
     // 1) Camera
-    btnCam.addEventListener('click', async ()=>{
+    btnCam.addEventListener('click', async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }, audio: false
+        });
         vid.srcObject = stream;
         log('✅ Camera OK');
         btnGeo.disabled = false;
-      } catch(e) { log('❌ Camera ERR', e.message); }
+      } catch (e) {
+        log('❌ Camera ERR', e.message);
+      }
     });
 
     // 2) Geolocation
-    btnGeo.addEventListener('click', ()=>{
-      navigator.geolocation.getCurrentPosition(pos=>{
-        lat=pos.coords.latitude; lng=pos.coords.longitude;
+    btnGeo.addEventListener('click', () => {
+      navigator.geolocation.getCurrentPosition(pos => {
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
         log('✅ Geo OK', lat.toFixed(5), lng.toFixed(5));
         btnGyro.disabled = false;
-      }, err=> log('❌ Geo ERR', err.message), { enableHighAccuracy:true, timeout:10000 });
+      }, err => {
+        log('❌ Geo ERR', err.message);
+      }, { enableHighAccuracy: true, timeout: 10000 });
     });
 
-    // 3) Device orientation & magnetic logs
+    // 3) Device orientation + smoothing + cardinal + magnetic log
     function handleOrientation(e) {
-      // raw values
-      const alpha = e.alpha, beta = e.beta, gamma = e.gamma;
-      const absolute = e.absolute;
-      // compute heading from compass or alpha
-      const h = e.webkitCompassHeading != null ? e.webkitCompassHeading : 360 - alpha;
-      rawH = h; rawP = beta;
-      smoothH = smoothH*(1-SMOOTH)+rawH*SMOOTH;
-      smoothP = smoothP*(1-SMOOTH)+rawP*SMOOTH;
-      const cardinal = getCardinal(smoothH);
-      // log raw + smoothed + cardinal + absolute
-      if (!handleOrientation.last || Date.now()-handleOrientation.last > 1000) {
+      rawH = e.webkitCompassHeading != null ? e.webkitCompassHeading : 360 - e.alpha;
+      rawP = e.beta;
+      rawG = e.gamma;
+
+      smoothH = smoothH * (1 - SMOOTH) + rawH * SMOOTH;
+      smoothP = smoothP * (1 - SMOOTH) + rawP * SMOOTH;
+      smoothG = smoothG * (1 - SMOOTH) + rawG * SMOOTH;
+
+      const cardinal = ['N','NE','E','SE','S','SW','W','NW'][Math.round(smoothH/45)%8];
+      const now = Date.now();
+      if (!handleOrientation.last || now - handleOrientation.last > 1000) {
         log(
-          '🔍 Ori RAW α:', alpha.toFixed(1),
-                   'β:', beta.toFixed(1),
-                   'γ:', gamma.toFixed(1),
-                   'abs:', absolute
+          '🔍 α:', e.alpha.toFixed(1),
+          'β:', rawP.toFixed(1),
+          'γ:', rawG.toFixed(1),
+          'mag:', magX, magY, magZ
         );
         log(
-          '↻ H_smooth:', smoothH.toFixed(1)+'°('+cardinal+')',
-                  'P_smooth:', smoothP.toFixed(1)+'°'
+          `↻ H:${smoothH.toFixed(1)}°(${cardinal})`,
+          `P:${smoothP.toFixed(1)}°`,
+          `G:${smoothG.toFixed(1)}°`
         );
-        handleOrientation.last = Date.now();
+        handleOrientation.last = now;
       }
     }
 
-    btnGyro.addEventListener('click', ()=>{
+    btnGyro.addEventListener('click', () => {
       if (DeviceOrientationEvent.requestPermission) {
         DeviceOrientationEvent.requestPermission()
-          .then(state=>{
-            if (state==='granted') {
+          .then(state => {
+            if (state === 'granted') {
               window.addEventListener('deviceorientation', handleOrientation);
               log('✅ Gyro OK');
               btnAR.disabled = false;
-            } else log('❌ Gyro DENIED');
+            } else {
+              log('❌ Gyro DENIED');
+            }
           })
-          .catch(err=> log('❌ Gyro ERR', err));
+          .catch(err => log('❌ Gyro ERR', err));
       } else {
         window.addEventListener('deviceorientation', handleOrientation);
         log('✅ Gyro OK');
@@ -137,69 +164,95 @@
       }
     });
 
-    // compute sun path
-    function computeSunPath(){
+    // Compute sun path
+    function computeSunPath() {
       sunPath = [];
-      const now=new Date();
-      for(let i=0;i<96;i++){
-        const t=new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const now = new Date();
+      for (let i=0; i<96; i++) {
+        const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         t.setMinutes(i*15);
-        const pos=SunCalc.getPosition(t,lat,lng);
+        const pos = SunCalc.getPosition(t, lat, lng);
         sunPath.push({
-          az:(pos.azimuth*180/Math.PI+360)%360,
-          alt:pos.altitude*180/Math.PI
+          az: (pos.azimuth * 180/Math.PI + 360) % 360,
+          alt: pos.altitude * 180/Math.PI
         });
       }
-      log('🎯 Sun path points:', sunPath.length);
+      log('🎯 Sun path pts:', sunPath.length);
     }
 
-    // AR draw loop
-    function drawAR(){
-      ctx.clearRect(0,0,cv.width,cv.height);
-      const w=cv.width, h=cv.height;
-      // derive vertical FOV from HFOV & aspect
-      const vFOV=2*Math.atan(Math.tan((HFOV/2)*Math.PI/180)*(h/w))*180/Math.PI;
-      const halfH=HFOV/2, halfV=vFOV/2;
-      // horizon at alt=0
-      const y0=(0.5 - (0 - smoothP)/halfV)*h;
-      ctx.strokeStyle='white'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(w,y0); ctx.stroke();
-      // sun path
-      ctx.strokeStyle='yellow'; ctx.lineWidth=2; ctx.beginPath();
-      sunPath.forEach((pt,i)=>{
-        let rAz=pt.az - smoothH;
-        if(rAz>180) rAz-=360; if(rAz<-180) rAz+=360;
-        let rAlt=pt.alt - smoothP;
-        if(Math.abs(rAz)<=halfH && Math.abs(rAlt)<=halfV){
-          const x=(0.5 + rAz/HFOV)*w;
-          const y=(0.5 - rAlt/vFOV)*h;
-          i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    // Draw AR overlay with roll correction
+    function drawAR() {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      const w = cv.width, h = cv.height;
+      // compute vertical FOV from HFOV & aspect ratio
+      const vFOV = 2 * Math.atan(Math.tan((HFOV/2)*Math.PI/180) * (h/w)) * 180/Math.PI;
+      const halfH = HFOV/2, halfV = vFOV/2;
+
+      // roll‐corrected canvas
+      ctx.save();
+      ctx.translate(w/2, h/2);
+      ctx.rotate(-smoothG * Math.PI/180);
+      ctx.translate(-w/2, -h/2);
+
+      // horizon line at alt=0
+      const y0 = (0.5 - (0 - smoothP)/halfV) * h;
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, y0);
+      ctx.lineTo(w, y0);
+      ctx.stroke();
+
+      // sun path arc
+      ctx.strokeStyle = 'rgba(255,255,0,0.7)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      sunPath.forEach((pt, i) => {
+        let rAz = pt.az - smoothH;
+        if (rAz > 180) rAz -= 360;
+        if (rAz < -180) rAz += 360;
+        let rAlt = pt.alt - smoothP;
+        if (Math.abs(rAz) <= halfH && Math.abs(rAlt) <= halfV) {
+          const x = (0.5 + rAz/HFOV) * w;
+          const y = (0.5 - rAlt/vFOV) * h;
+          i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
         }
       });
       ctx.stroke();
-      // current sun icon
-      const cur=SunCalc.getPosition(new Date(),lat,lng);
-      let caz=(cur.azimuth*180/Math.PI+360)%360, calt=cur.altitude*180/Math.PI;
-      let rAz=caz - smoothH; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
-      let rAlt=calt - smoothP;
-      const sx=(0.5 + rAz/HFOV)*w, sy=(0.5 - rAlt/vFOV)*h;
-      ctx.fillStyle='orange'; ctx.beginPath(); ctx.arc(sx,sy,10,0,2*Math.PI); ctx.fill();
-      ctx.fillStyle='white'; ctx.textAlign='center'; ctx.fillText('☀️',sx,sy-12);
+
+      // current sun
+      const cur = SunCalc.getPosition(new Date(), lat, lng);
+      let caz  = (cur.azimuth * 180/Math.PI + 360) % 360;
+      let calt = cur.altitude * 180/Math.PI;
+      let rAz  = caz - smoothH; if (rAz>180) rAz-=360; if(rAz<-180) rAz+=360;
+      let rAlt = calt - smoothP;
+      const sx = (0.5 + rAz/HFOV) * w;
+      const sy = (0.5 - rAlt/vFOV) * h;
+      ctx.fillStyle = 'orange';
+      ctx.beginPath(); ctx.arc(sx, sy, 15, 0, 2*Math.PI); ctx.fill();
+      ctx.fillStyle = 'white'; ctx.textAlign='center';
+      ctx.fillText('☀️ Sun', sx, sy - 25);
+
+      ctx.restore();
+
       requestAnimationFrame(drawAR);
     }
 
     // 4) Start AR
-    btnAR.addEventListener('click', ()=>{
-      if(!stream||lat===null){ log('❌ Missing prerequisites'); return; }
-      cv.width=vid.videoWidth||innerWidth; cv.height=vid.videoHeight||innerHeight;
-      ctx=cv.getContext('2d');
+    btnAR.addEventListener('click', () => {
+      if (!stream || lat===null) {
+        log('❌ Missing prerequisites'); return;
+      }
+      cv.width  = vid.videoWidth  || window.innerWidth;
+      cv.height = vid.videoHeight || window.innerHeight;
+      ctx = cv.getContext('2d');
       computeSunPath();
       drawAR();
       log('🎉 AR started');
     });
 
     // copy logs
-    btnCopy.addEventListener('click', async()=>{
+    btnCopy.addEventListener('click', async () => {
       await navigator.clipboard.writeText(dbg.textContent);
       log('📋 Logs copied');
     });
