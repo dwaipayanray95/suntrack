@@ -2,82 +2,112 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- enable fullscreen safe-area usage -->
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>AR Debug Minimal</title>
   <style>
-    body,html { margin:0; padding:0; height:100%; display:flex; flex-direction:column; }
-    video, canvas { flex:1; width:100%; object-fit:cover; }
-    #debug { height:120px; overflow:auto; background:#011; color:#0f8;
-             font-family:monospace; font-size:12px; padding:4px; }
-    #controls { display:flex; gap:8px; padding:8px; background:#222; }
-    button { flex:1; padding:8px; font-size:14px; }
-    button:disabled { opacity:0.4; }
+    /* 1. Make the page extend into the “notch” and bottom inset */
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%; display: flex; flex-direction: column;
+      /* ensure our custom padding pushes content above the home indicator */
+      padding-bottom: env(safe-area-inset-bottom);
+      background: #000;
+    }
+    /* Video + Canvas fill remaining space */
+    #vid, #cv {
+      flex: 1; width: 100%; object-fit: cover;
+    }
+    /* Control bar at bottom, above the safe-area inset */
+    #controls {
+      display: flex; gap: 8px;
+      padding: 8px;
+      background: rgba(0,0,0,0.7);
+      position: absolute; left: 0; right: 0;
+      /* lift controls above the home indicator */
+      bottom: calc(8px + env(safe-area-inset-bottom));
+      z-index: 10;
+    }
+    button {
+      flex: 1; padding: 8px; font-size: 14px;
+      border: none; background: #222; color: #fff;
+      border-radius: 4px;
+    }
+    button:disabled { opacity: 0.4; }
+    /* Debug console at bottom */
+    #debug {
+      height: 120px; overflow:auto;
+      background: #011; color: #0f8;
+      font-family: monospace; font-size: 12px;
+      padding: 4px; margin-top: auto;
+    }
   </style>
 </head>
 <body>
   <video id="vid" playsinline autoplay muted></video>
   <canvas id="cv"></canvas>
+
   <div id="controls">
     <button id="btnCam">Start Camera</button>
     <button id="btnGeo" disabled>Get Location</button>
     <button id="btnGyro" disabled>Enable Motion</button>
     <button id="btnAR" disabled>Start AR</button>
   </div>
+
   <pre id="debug">[ready]\n</pre>
 
   <script>
-    const log = (...args) => {
-      const o = document.getElementById('debug');
-      o.textContent += args.join(' ') + '\\n';
-      o.scrollTop = o.scrollHeight;
+    const log = (...a) => {
+      const dbg = document.getElementById('debug');
+      dbg.textContent += a.join(' ') + '\n';
+      dbg.scrollTop = dbg.scrollHeight;
     };
 
     let stream, lat, lng, heading, pitch;
 
     // 1️⃣ Camera
-    async function startCam(){
+    document.getElementById('btnCam').onclick = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ facingMode:'environment' }, audio:false
+        });
         document.getElementById('vid').srcObject = stream;
         log('✅ Camera OK');
         document.getElementById('btnGeo').disabled = false;
-      } catch(e){
+      } catch(e) {
         log('❌ Camera ERR', e.name, e.message);
       }
-    }
-    document.getElementById('btnCam').onclick = startCam;
+    };
 
     // 2️⃣ Geolocation
     document.getElementById('btnGeo').onclick = () => {
-      if(!navigator.geolocation) return log('❌ No geolocation');
-      navigator.geolocation.getCurrentPosition(pos=>{
+      if (!navigator.geolocation) return log('❌ No geolocation');
+      navigator.geolocation.getCurrentPosition(pos => {
         lat = pos.coords.latitude; lng = pos.coords.longitude;
         log('✅ Geo OK', lat.toFixed(6), lng.toFixed(6));
         document.getElementById('btnGyro').disabled = false;
-      }, err=>{
+      }, err => {
         log('❌ Geo ERR', err.code, err.message);
       }, { enableHighAccuracy:true, timeout:10000 });
     };
 
     // 3️⃣ Gyroscope
-    function handleOri(e){
-      heading = e.webkitCompassHeading !== undefined 
-                ? e.webkitCompassHeading 
-                : 360 - e.alpha;
+    const handleOri = e => {
+      heading = e.webkitCompassHeading != null
+        ? e.webkitCompassHeading
+        : 360 - e.alpha;
       pitch = e.beta;
       log('↻ Motion', heading.toFixed(1)+'°', pitch.toFixed(1)+'°');
-    }
+    };
     document.getElementById('btnGyro').onclick = () => {
-      if(typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission()
-          .then(s => {
-            if(s==='granted'){
-              window.addEventListener('deviceorientation', handleOri);
-              log('✅ Gyro OK');
-              document.getElementById('btnAR').disabled = false;
-            } else log('❌ Gyro DENIED');
-          })
-          .catch(e=> log('❌ Gyro ERR', e));
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(s => {
+          if (s==='granted') {
+            window.addEventListener('deviceorientation', handleOri);
+            log('✅ Gyro OK');
+            document.getElementById('btnAR').disabled = false;
+          } else log('❌ Gyro DENIED');
+        }).catch(e => log('❌ Gyro ERR', e));
       } else {
         window.addEventListener('deviceorientation', handleOri);
         log('✅ Gyro OK (no prompt)');
@@ -85,12 +115,12 @@
       }
     };
 
-    // 4️⃣ AR start validation
+    // 4️⃣ AR start check
     document.getElementById('btnAR').onclick = () => {
       const ok = !!stream && lat!=null && heading!=null;
-      log(ok ? '🎉 All set! AR could start now.' 
-             : '❌ Missing: ' +
-               `Cam=${!!stream} Geo=${lat!=null} Gyro=${heading!=null}`);
+      log(ok
+        ? '🎉 All set! AR could start now.'
+        : `❌ Missing inputs: cam=${!!stream}, geo=${lat!=null}, gyro=${heading!=null}`);
     };
   </script>
 </body>
