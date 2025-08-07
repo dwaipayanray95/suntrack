@@ -49,14 +49,25 @@
             cursor: pointer;
             border: none;
         }
-        #video-container {
-            position: relative;
+        #ar-view {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100vh;
-            display: none;
+            display: none; /* Initially hidden */
         }
         #videoElement {
-            display: none; /* Hide the video element itself, we'll draw it to canvas */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            z-index: 1;
+            object-fit: cover; /* This is key for full-screen camera feed */
         }
         #canvasElement {
             position: absolute;
@@ -65,6 +76,7 @@
             width: 100%;
             height: 100%;
             z-index: 10;
+            background: transparent; /* Makes the canvas transparent */
         }
         #loading-message {
             position: absolute;
@@ -167,8 +179,8 @@
         </button>
     </div>
 
-    <!-- Video and Canvas for the AR effect -->
-    <div id="video-container" class="hidden">
+    <!-- The new AR view container -->
+    <div id="ar-view" class="hidden">
         <video id="videoElement" playsinline autoplay muted></video>
         <canvas id="canvasElement"></canvas>
         <div id="loading-message" class="hidden">Loading Sun Path...</div>
@@ -197,7 +209,7 @@
         window.onload = function() {
             // Get DOM elements
             const mainUI = document.getElementById('main-ui');
-            const videoContainer = document.getElementById('video-container');
+            const arView = document.getElementById('ar-view');
             const statusMessage = document.getElementById('status-message');
             const mainButton = document.getElementById('main-btn');
             const videoElement = document.getElementById('videoElement');
@@ -233,27 +245,28 @@
                 log(`[updateUI] Changing step to: ${step}`);
                 if (step === 'location') {
                     mainUI.classList.remove('hidden');
-                    videoContainer.classList.add('hidden');
+                    arView.classList.add('hidden');
                     statusMessage.textContent = 'Get your location to start.';
                     mainButton.textContent = 'Get Location';
                     mainButton.onclick = requestGeolocation;
                 } else if (step === 'camera') {
                     mainUI.classList.remove('hidden');
-                    videoContainer.classList.add('hidden');
+                    arView.classList.add('hidden');
                     statusMessage.textContent = 'Location found! Now, grant camera access.';
                     mainButton.textContent = 'Get Camera Permission';
                     mainButton.onclick = requestCamera;
                 } else if (step === 'gyro') {
                     mainUI.classList.remove('hidden');
-                    videoContainer.classList.add('hidden');
+                    arView.classList.add('hidden');
                     statusMessage.textContent = 'Last step! Enable device motion for AR.';
                     mainButton.textContent = 'Enable Device Motion';
                     mainButton.onclick = requestGyroscope;
                 } else if (step === 'ar') {
                     log('[AR] Now displaying video and AR elements.');
                     mainUI.classList.add('hidden');
-                    videoContainer.classList.remove('hidden');
-                    // The video element is now hidden, and we will draw its frames to the canvas
+                    arView.classList.remove('hidden');
+                    // The video element is now the background, and we'll draw the AR overlays on the canvas
+                    // The canvas is also set to match the screen size with CSS.
                     startArLoop(); 
                     // Calculate sun path in a non-blocking way
                     setTimeout(calculateSunPath, 100);
@@ -406,8 +419,8 @@
 
             function startArLoop() {
                 const draw = () => {
-                    // Draw the video frame to the canvas first
-                    ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                    // Clear the canvas for the new frame
+                    ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                     
                     const halfFOV_H = horizontalFOV / 2;
                     const halfFOV_V = verticalFOV / 2;
