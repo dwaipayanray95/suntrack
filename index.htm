@@ -64,6 +64,7 @@
         }
         #canvasElement {
             z-index: 10;
+            background-color: transparent; /* Make canvas background transparent */
         }
         #loading-message {
             position: absolute;
@@ -253,7 +254,7 @@
                     log('[AR] Now displaying video and AR elements.');
                     mainUI.classList.add('hidden');
                     videoContainer.classList.remove('hidden');
-                    // Immediately start the AR loop to show the camera feed
+                    // The video is now always visible behind the transparent canvas
                     startArLoop(); 
                     // Calculate sun path in a non-blocking way
                     setTimeout(calculateSunPath, 100);
@@ -306,6 +307,7 @@
                     videoElement.srcObject = stream;
                     videoElement.play();
                     videoElement.onloadedmetadata = () => {
+                        // The canvas dimensions are now set to match the video
                         canvasElement.width = videoElement.videoWidth;
                         canvasElement.height = videoElement.videoHeight;
                     };
@@ -405,8 +407,8 @@
 
             function startArLoop() {
                 const draw = () => {
-                    // Draw the camera feed
-                    ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                    // Clear the canvas before drawing new frames
+                    ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                     
                     const halfFOV_H = horizontalFOV / 2;
                     const halfFOV_V = verticalFOV / 2;
