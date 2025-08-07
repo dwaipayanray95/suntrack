@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>SunTrack AR - Fixed</title>
+  <title>SunTrack AR - Working Solution</title>
   <style>
     /* Safe‐area / layout */
     html, body {
@@ -47,46 +47,58 @@
     }
     button:disabled { opacity: 0.4; }
     
-    /* Calibration mode */
-    #calibration {
+    /* Status indicator */
+    #status-indicator {
       position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.8);
+      top: 150px;
+      right: 20px;
+      width: 120px;
+      background: rgba(0,0,0,0.7);
       color: white;
-      padding: 20px;
-      border-radius: 10px;
-      text-align: center;
-      z-index: 3000;
-      display: none;
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 1000;
+      font-size: 14px;
+    }
+    
+    .status-item {
+      margin: 5px 0;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .status-value {
+      color: #ffcc00;
+      font-weight: bold;
     }
     
     /* Orientation indicator */
     #orientation-indicator {
       position: fixed;
-      top: 150px;
+      top: 200px;
       right: 20px;
       width: 100px;
       height: 100px;
-      z-index: 2000;
+      z-index: 1000;
       background: rgba(0,0,0,0.5);
       border-radius: 50%;
+      transform: rotate(0deg);
     }
     .axis {
       position: absolute;
       transform-origin: center;
-      background: red;
     }
     .axis-x {
       width: 2px;
       height: 100%;
       left: 50%;
+      background: red;
     }
     .axis-y {
       width: 100%;
       height: 2px;
       top: 50%;
+      background: green;
     }
     .axis-z {
       width: 100%;
@@ -95,12 +107,32 @@
       border-radius: 50%;
       box-sizing: border-box;
     }
+    
+    /* Off-screen indicator */
+    .off-screen-indicator {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
   </style>
 </head>
 <body>
 
   <video id="vid" playsinline autoplay muted></video>
   <canvas id="cv"></canvas>
+  
+  <div id="status-indicator">
+    <div class="status-item">Status: <span id="status-value" class="status-value">Ready</span></div>
+    <div class="status-item">Sun Az: <span id="sun-az-value" class="status-value">0°</span></div>
+    <div class="status-item">Sun Alt: <span id="sun-alt-value" class="status-value">0°</span></div>
+    <div class="status-item">Heading: <span id="heading-value" class="status-value">0°</span></div>
+    <div class="status-item">Pitch: <span id="pitch-value" class="status-value">0°</span></div>
+  </div>
   
   <div id="orientation-indicator">
     <div class="axis axis-x"></div>
@@ -115,17 +147,7 @@
     <button id="btnGeo" disabled>Get Location</button>
     <button id="btnGyro" disabled>Enable Motion</button>
     <button id="btnAR" disabled>Start AR</button>
-    <button id="btnCalibrate">Calibrate</button>
     <button id="btnCopy">Copy Logs</button>
-  </div>
-  
-  <div id="calibration">
-    <h2>Calibration Mode</h2>
-    <p>Point your device at the actual sun</p>
-    <div style="display: flex; gap: 10px; margin-top: 15px;">
-      <button id="btnConfirmCal">Confirm</button>
-      <button id="btnCancelCal">Cancel</button>
-    </div>
   </div>
 
   <script>
@@ -134,12 +156,21 @@
     const cv  = document.getElementById('cv');
     const logEl = document.getElementById('debug');
     const orientationIndicator = document.getElementById('orientation-indicator');
-    const calibrationPanel = document.getElementById('calibration');
+    const statusValue = document.getElementById('status-value');
+    const sunAzValue = document.getElementById('sun-az-value');
+    const sunAltValue = document.getElementById('sun-alt-value');
+    const headingValue = document.getElementById('heading-value');
+    const pitchValue = document.getElementById('pitch-value');
+    
     let stream, lat, lng, heading, pitch, roll;
     let sunPath = [], ctx2d;
-    let calibrationOffset = 0;
-    let isCalibrating = false;
     let lastOrientationLog = 0;
+    let animationFrameId = null;
+    let isARActive = false;
+
+    // Field of view settings
+    const HORIZONTAL_FOV = 60;  // degrees
+    const VERTICAL_FOV = 45;    // degrees
 
     // —— Logging helper ——
     function log(...args) {
@@ -187,43 +218,54 @@
         });
         
         log('✅ Camera OK - Dimensions:', vid.videoWidth, 'x', vid.videoHeight);
+        statusValue.textContent = 'Camera Ready';
         document.getElementById('btnGeo').disabled = false;
       } catch (e) {
         log('❌ Camera ERR', e.name, e.message);
+        statusValue.textContent = 'Camera Error';
       }
     };
 
     // —— 2) Geolocation ——
     document.getElementById('btnGeo').onclick = () => {
       if (!navigator.geolocation) return log('❌ No geolocation API');
+      statusValue.textContent = 'Getting Location...';
       navigator.geolocation.getCurrentPosition(pos => {
         lat = pos.coords.latitude; 
         lng = pos.coords.longitude;
         log('✅ Geo OK', lat.toFixed(6), lng.toFixed(6));
+        statusValue.textContent = 'Location Found';
         document.getElementById('btnGyro').disabled = false;
       }, err => {
         log('❌ Geo ERR', err.code, err.message);
+        statusValue.textContent = 'Location Error';
       }, { enableHighAccuracy:true, timeout:10000 });
     };
 
     // —— 3) Device Motion ——
     function handleOri(e) {
-      // Get device orientation with calibration offset
+      // Normalize heading
       heading = e.webkitCompassHeading != null
-        ? (e.webkitCompassHeading + calibrationOffset) % 360 
-        : ((360 - e.alpha) + calibrationOffset) % 360;
+        ? e.webkitCompassHeading : (360 - e.alpha);
       
-      pitch = e.beta;
+      // Normalize pitch (adjust for portrait orientation)
+      pitch = e.beta - 90;
+      
+      // Normalize roll
       roll = e.gamma;
       
-      // Normalize angles
-      if (heading > 180) heading -= 360;
-      if (heading < -180) heading += 360;
+      // Clamp values
+      if (heading > 360) heading -= 360;
+      if (heading < 0) heading += 360;
       if (pitch > 180) pitch -= 360;
       if (pitch < -180) pitch += 360;
       
       // Update orientation indicator
-      orientationIndicator.style.transform = `rotate(${-heading}deg)`;
+      orientationIndicator.style.transform = `rotate(${heading}deg)`;
+      
+      // Update status display
+      headingValue.textContent = heading.toFixed(1) + '°';
+      pitchValue.textContent = pitch.toFixed(1) + '°';
       
       // Throttle logging
       const now = Date.now();
@@ -237,43 +279,28 @@
     }
     
     document.getElementById('btnGyro').onclick = () => {
+      statusValue.textContent = 'Requesting Motion...';
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission().then(state => {
           if (state==='granted') {
             window.addEventListener('deviceorientation', handleOri);
             log('✅ Gyro OK');
+            statusValue.textContent = 'Motion Enabled';
             document.getElementById('btnAR').disabled = false;
-          } else log('❌ Gyro DENIED');
-        }).catch(err => log('❌ Gyro ERR', err));
+          } else {
+            log('❌ Gyro DENIED');
+            statusValue.textContent = 'Motion Denied';
+          }
+        }).catch(err => {
+          log('❌ Gyro ERR', err);
+          statusValue.textContent = 'Motion Error';
+        });
       } else {
         window.addEventListener('deviceorientation', handleOri);
         log('✅ Gyro OK (no prompt)');
+        statusValue.textContent = 'Motion Enabled';
         document.getElementById('btnAR').disabled = false;
       }
-    };
-    
-    // —— Calibration functions ——
-    document.getElementById('btnCalibrate').onclick = () => {
-      calibrationPanel.style.display = 'block';
-      isCalibrating = true;
-      log('🔧 Calibration mode started');
-    };
-    
-    document.getElementById('btnConfirmCal').onclick = () => {
-      // Calculate offset based on actual sun position
-      const now = new Date();
-      const sunPos = getSunPosition(now, lat, lng);
-      calibrationOffset = (360 - heading - sunPos.azimuth) % 360;
-      
-      calibrationPanel.style.display = 'none';
-      isCalibrating = false;
-      log('✅ Calibration complete. Offset:', calibrationOffset.toFixed(1)+'°');
-    };
-    
-    document.getElementById('btnCancelCal').onclick = () => {
-      calibrationPanel.style.display = 'none';
-      isCalibrating = false;
-      log('❌ Calibration cancelled');
     };
 
     // —— Sun path compute ——
@@ -295,50 +322,75 @@
       // Clear canvas
       ctx2d.clearRect(0,0,cv.width,cv.height);
       
-      // Field of view settings
-      const halfH = 30; // Horizontal FOV half (60° total)
-      const halfV = 22.5; // Vertical FOV half (45° total)
+      // Calculate FOV values
+      const halfH = HORIZONTAL_FOV / 2;
+      const halfV = VERTICAL_FOV / 2;
       
       // Draw horizon line with roll compensation
-      if (roll !== undefined && !isCalibrating) {
-        const centerY = cv.height / 2;
-        const tilt = roll * rad;
-        const slope = Math.tan(tilt);
-        const intercept = centerY - slope * (cv.width / 2);
+      if (roll !== undefined) {
+        // Calculate horizon position based on pitch
+        const horizonY = cv.height * (0.5 - (pitch / (2 * halfV)));
         
         ctx2d.strokeStyle='rgba(255,255,255,0.8)'; 
         ctx2d.lineWidth=3;
-        ctx2d.beginPath(); 
-        ctx2d.moveTo(0, slope * 0 + intercept); 
-        ctx2d.lineTo(cv.width, slope * cv.width + intercept); 
+        ctx2d.beginPath();
+        
+        // Apply roll to horizon line
+        const centerX = cv.width / 2;
+        const tiltAngle = roll * rad;
+        const offsetY = Math.tan(tiltAngle) * centerX;
+        
+        ctx2d.moveTo(0, horizonY - offsetY);
+        ctx2d.lineTo(cv.width, horizonY + offsetY);
         ctx2d.stroke();
         
         // Label the horizon
         ctx2d.fillStyle = "white";
         ctx2d.font = "bold 16px sans-serif";
         ctx2d.textAlign = "center";
-        ctx2d.fillText("Horizon", cv.width/2, slope * (cv.width/2) + intercept - 15);
+        ctx2d.fillText("Horizon", cv.width/2, horizonY - 15);
       }
       
       // Draw sun path arc
-      if (sunPath.length > 0 && !isCalibrating) {
+      if (sunPath.length > 0) {
         ctx2d.strokeStyle='rgba(255,255,0,0.7)'; 
         ctx2d.lineWidth=3;
         ctx2d.beginPath();
         
+        let firstPoint = true;
+        
         sunPath.forEach((pt,i) => {
+          // Calculate relative azimuth
           let relAz = pt.azimuth - heading;
           if (relAz > 180) relAz -= 360;
           if (relAz < -180) relAz += 360;
           
+          // Calculate relative altitude
           let relAlt = pt.altitude - pitch;
           
           // Only draw if within FOV
           if (Math.abs(relAz) <= halfH && Math.abs(relAlt) <= halfV) {
-            const x = ((relAz + halfH) / (halfH * 2)) * cv.width;
-            const y = ((-relAlt + halfV) / (halfV * 2)) * cv.height;
+            const x = ((relAz + halfH) / HORIZONTAL_FOV) * cv.width;
+            const y = ((halfV - relAlt) / VERTICAL_FOV) * cv.height;
             
-            i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+            if (firstPoint) {
+              ctx2d.moveTo(x, y);
+              firstPoint = false;
+            } else {
+              ctx2d.lineTo(x, y);
+            }
+            
+            // Add hour markers
+            const hour = pt.time.getHours();
+            if (hour % 3 === 0 && pt.time.getMinutes() === 0) {
+              ctx2d.fillStyle = "yellow";
+              ctx2d.font = "bold 12px sans-serif";
+              ctx2d.textAlign = "center";
+              ctx2d.fillText(`${hour}:00`, x, y - 18);
+              ctx2d.beginPath();
+              ctx2d.arc(x, y, 5, 0, Math.PI*2);
+              ctx2d.fill();
+            }
           }
         });
         
@@ -346,44 +398,75 @@
       }
       
       // Draw current sun position
-      if (lat !== null && lng !== null && !isCalibrating) {
+      if (lat !== null && lng !== null) {
         const now = new Date();
         const sunPos = getSunPosition(now, lat, lng);
         
+        // Update status display
+        sunAzValue.textContent = sunPos.azimuth.toFixed(1) + '°';
+        sunAltValue.textContent = sunPos.altitude.toFixed(1) + '°';
+        
+        // Calculate relative position
         let relAz = sunPos.azimuth - heading;
         if (relAz > 180) relAz -= 360;
         if (relAz < -180) relAz += 360;
         
         let relAlt = sunPos.altitude - pitch;
         
-        const sunX = ((relAz + halfH) / (halfH * 2)) * cv.width;
-        const sunY = ((-relAlt + halfV) / (halfV * 2)) * cv.height;
+        // Calculate screen coordinates
+        const sunX = ((relAz + halfH) / HORIZONTAL_FOV) * cv.width;
+        const sunY = ((halfV - relAlt) / VERTICAL_FOV) * cv.height;
         
-        // Draw sun with glow effect
-        ctx2d.shadowColor = 'rgba(255, 200, 0, 0.7)';
-        ctx2d.shadowBlur = 15;
-        ctx2d.fillStyle = 'rgba(255, 200, 0, 1)';
-        ctx2d.beginPath();
-        ctx2d.arc(sunX, sunY, 15, 0, Math.PI * 2);
-        ctx2d.fill();
+        // Check if sun is on screen
+        const isSunVisible = sunX >= 0 && sunX <= cv.width && 
+                             sunY >= 0 && sunY <= cv.height;
         
-        // Reset shadow
-        ctx2d.shadowBlur = 0;
-        
-        // Label the sun
-        ctx2d.fillStyle = "white";
-        ctx2d.font = "bold 16px sans-serif";
-        ctx2d.textAlign = "center";
-        ctx2d.fillText("☀️ Sun", sunX, sunY - 25);
-        
-        // Log sun position for debugging
-        log('☀️ Sun:', 
-            'Azimuth:', sunPos.azimuth.toFixed(1) + '°', 
-            'Altitude:', sunPos.altitude.toFixed(1) + '°',
-            'Screen:', sunX.toFixed(0), sunY.toFixed(0));
+        if (isSunVisible) {
+          // Draw sun with glow effect
+          ctx2d.shadowColor = 'rgba(255, 200, 0, 0.7)';
+          ctx2d.shadowBlur = 15;
+          ctx2d.fillStyle = 'rgba(255, 200, 0, 1)';
+          ctx2d.beginPath();
+          ctx2d.arc(sunX, sunY, 15, 0, Math.PI * 2);
+          ctx2d.fill();
+          
+          // Reset shadow
+          ctx2d.shadowBlur = 0;
+          
+          // Label the sun
+          ctx2d.fillStyle = "white";
+          ctx2d.font = "bold 16px sans-serif";
+          ctx2d.textAlign = "center";
+          ctx2d.fillText("☀️ Sun", sunX, sunY - 25);
+        } else {
+          // Draw off-screen indicator
+          const indicator = document.createElement('div');
+          indicator.className = 'off-screen-indicator';
+          indicator.innerHTML = '☀️';
+          indicator.style.color = 'orange';
+          
+          // Position indicator at edge of screen pointing to sun
+          let left = Math.max(20, Math.min(cv.width - 60, sunX));
+          let top = Math.max(20, Math.min(cv.height - 60, sunY));
+          
+          // Position at edge of screen
+          if (sunX < 0) left = 10;
+          else if (sunX > cv.width) left = cv.width - 50;
+          if (sunY < 0) top = 10;
+          else if (sunY > cv.height) top = cv.height - 50;
+          
+          indicator.style.left = left + 'px';
+          indicator.style.top = top + 'px';
+          
+          // Remove previous indicator if exists
+          const prevIndicator = document.querySelector('.off-screen-indicator');
+          if (prevIndicator) document.body.removeChild(prevIndicator);
+          
+          document.body.appendChild(indicator);
+        }
       }
       
-      // Draw crosshair for reference
+      // Draw center crosshair for reference
       ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.5)';
       ctx2d.lineWidth = 1;
       ctx2d.beginPath();
@@ -399,7 +482,7 @@
       ctx2d.arc(cv.width/2, cv.height/2, 5, 0, Math.PI*2);
       ctx2d.fill();
       
-      requestAnimationFrame(drawAR);
+      animationFrameId = requestAnimationFrame(drawAR);
     }
 
     // —— 4) Start AR ——
@@ -407,6 +490,8 @@
       const ok = !!stream && lat != null;
       log(ok ? '🎉 All set — starting AR!' : '❌ Missing prerequisites');
       if (!ok) return;
+      
+      statusValue.textContent = 'Starting AR...';
       
       // Set canvas dimensions to match video
       cv.width  = vid.videoWidth || window.innerWidth;
@@ -416,7 +501,12 @@
       calculateSunPath();
       
       // Start AR rendering loop
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      isARActive = true;
       drawAR();
+      statusValue.textContent = 'AR Active';
     };
 
     // —— Copy Logs ——
@@ -428,6 +518,16 @@
         log('❌ Copy failed', e);
       }
     };
+    
+    // Cleanup when page closes
+    window.addEventListener('beforeunload', () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    });
   </script>
 </body>
 </html>
