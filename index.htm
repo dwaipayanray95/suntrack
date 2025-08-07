@@ -55,16 +55,16 @@
             height: 100vh;
             display: none;
         }
-        #videoElement, #canvasElement {
+        #videoElement {
+            display: none; /* Hide the video element itself, we'll draw it to canvas */
+        }
+        #canvasElement {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-        }
-        #canvasElement {
             z-index: 10;
-            background-color: transparent; /* Make canvas background transparent */
         }
         #loading-message {
             position: absolute;
@@ -91,7 +91,6 @@
             const C = toRad(1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
             const L = M + C + toRad(102.9372 + 180);
             const J = (d - J2000) - lw / (2 * Math.PI);
-            const H = toRad(360 * J);
 
             const dec = Math.asin(Math.sin(L) * Math.sin(toRad(23.44)));
             const Jset = J + Math.acos((Math.sin(toRad(-0.83)) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec))) / (2 * Math.PI);
@@ -254,7 +253,7 @@
                     log('[AR] Now displaying video and AR elements.');
                     mainUI.classList.add('hidden');
                     videoContainer.classList.remove('hidden');
-                    // The video is now always visible behind the transparent canvas
+                    // The video element is now hidden, and we will draw its frames to the canvas
                     startArLoop(); 
                     // Calculate sun path in a non-blocking way
                     setTimeout(calculateSunPath, 100);
@@ -407,8 +406,8 @@
 
             function startArLoop() {
                 const draw = () => {
-                    // Clear the canvas before drawing new frames
-                    ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                    // Draw the video frame to the canvas first
+                    ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
                     
                     const halfFOV_H = horizontalFOV / 2;
                     const halfFOV_V = verticalFOV / 2;
