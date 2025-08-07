@@ -174,8 +174,10 @@
                     log('[AR] Now displaying video and AR elements.');
                     mainUI.classList.add('hidden');
                     videoContainer.classList.remove('hidden');
-                    calculateSunPath();
-                    startArLoop();
+                    // Immediately start the AR loop to show the camera feed
+                    startArLoop(); 
+                    // Calculate sun path in a non-blocking way
+                    setTimeout(calculateSunPath, 100);
                 }
             }
 
@@ -240,7 +242,7 @@
             function requestGyroscope() {
                 log('[click] requesting gyroscope…');
                 if (!window.DeviceOrientationEvent) {
-                    log('❌ error gyroscope: Not supported');
+                    log('❌ error gyroscope: DeviceOrientationEvent not supported.');
                     showMessage("Your device does not support the necessary motion sensors for this AR application.");
                     return;
                 }
@@ -257,16 +259,16 @@
                         .then(permissionState => {
                             if (permissionState === 'granted') {
                                 window.addEventListener('deviceorientation', handleOrientation);
-                                log('✅ success gyroscope');
+                                log('✅ success gyroscope: Permission granted.');
                                 updateUI('ar');
                             } else {
-                                log('❌ error gyroscope: Permission denied');
-                                showMessage("Device motion permission denied. Please enable it in your browser settings.");
+                                log('❌ error gyroscope: Permission denied by user.');
+                                showMessage("Device motion permission denied. Please enable it in your browser settings for this app to work.");
                             }
                         })
                         .catch(error => {
                             log('❌ error gyroscope:', error);
-                            showMessage("There was an error requesting device motion. Please try again.");
+                            showMessage("There was an unexpected error requesting device motion. Please try again or check your device settings.");
                         });
                 } else {
                     // Non-iOS browsers, permission is not needed, so assume success
@@ -277,40 +279,44 @@
             }
 
             // ---- Sun Path Calculation and AR Loop ----
-
+            
             function calculateSunPath() {
                 log('[SunPath] Calculating sun path for the day...');
-                // The library is now embedded, so we can use it directly.
-                sunPathPoints = [];
-                const now = new Date();
-                const times = SunCalc.getTimes(now, latitude, longitude);
-                const sunTimes = ['sunrise', 'sunriseEnd', 'goldenHourEnd', 'solarNoon', 'goldenHour', 'sunsetStart', 'sunset'];
-                
-                // Calculate sun position every 15 minutes for a full day
-                for (let i = 0; i < 24 * 60; i += 15) {
-                    const time = new Date(now.getTime() + i * 60 * 1000);
-                    const pos = SunCalc.getSunPosition(time, latitude, longitude);
+                try {
+                    sunPathPoints = [];
+                    const now = new Date();
+                    const times = SunCalc.getTimes(now, latitude, longitude);
+                    const sunTimes = ['sunrise', 'sunriseEnd', 'goldenHourEnd', 'solarNoon', 'goldenHour', 'sunsetStart', 'sunset'];
                     
-                    const azimuthDeg = (pos.azimuth * 180 / Math.PI + 360) % 360;
-                    const altitudeDeg = pos.altitude * 180 / Math.PI;
+                    // Calculate sun position every 15 minutes for a full day
+                    for (let i = 0; i < 24 * 60; i += 15) {
+                        const time = new Date(now.getTime() + i * 60 * 1000);
+                        const pos = SunCalc.getSunPosition(time, latitude, longitude);
+                        
+                        const azimuthDeg = (pos.azimuth * 180 / Math.PI + 360) % 360;
+                        const altitudeDeg = pos.altitude * 180 / Math.PI;
 
-                    if (altitudeDeg > -10) { // Only track when the sun is not too far below the horizon
-                        const isMajorPoint = sunTimes.some(t => {
-                            const majorTime = times[t];
-                            if (!majorTime) return false;
-                            // Check if within a 15-minute window of a major event
-                            const diff = Math.abs(time.getTime() - majorTime.getTime());
-                            return diff < 15 * 60 * 1000;
-                        });
-                        sunPathPoints.push({
-                            azimuth: azimuthDeg,
-                            altitude: altitudeDeg,
-                            time: time,
-                            isMajor: isMajorPoint
-                        });
+                        if (altitudeDeg > -10) { // Only track when the sun is not too far below the horizon
+                            const isMajorPoint = sunTimes.some(t => {
+                                const majorTime = times[t];
+                                if (!majorTime) return false;
+                                // Check if within a 15-minute window of a major event
+                                const diff = Math.abs(time.getTime() - majorTime.getTime());
+                                return diff < 15 * 60 * 1000;
+                            });
+                            sunPathPoints.push({
+                                azimuth: azimuthDeg,
+                                altitude: altitudeDeg,
+                                time: time,
+                                isMajor: isMajorPoint
+                            });
+                        }
                     }
+                    log('[SunPath] Done calculating path.');
+                } catch (e) {
+                    log('❌ error SunPath calculation:', e);
+                    showMessage(`An error occurred while calculating the sun path. Debug details logged.`);
                 }
-                log('[SunPath] Done calculating path.');
             }
 
             function startArLoop() {
