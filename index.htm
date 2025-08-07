@@ -164,8 +164,7 @@
                 } else if (step === 'ar') {
                     mainUI.classList.add('hidden');
                     videoContainer.classList.remove('hidden');
-                    calculateSunPath();
-                    startArLoop();
+                    calculateAndStartAR();
                 }
             }
 
@@ -265,18 +264,32 @@
                     updateUI('ar');
                 }
             }
+            
+            // New function to handle async library loading and AR startup
+            function calculateAndStartAR() {
+                log('[AR] Starting AR sequence...');
+                
+                // Robustly check for SunCalc library before proceeding
+                const checkSunCalc = () => {
+                    if (typeof SunCalc === 'undefined' || typeof SunCalc.getSunPosition === 'undefined') {
+                        log('❌ SunCalc library not yet loaded. Retrying in 100ms...');
+                        setTimeout(checkSunCalc, 100);
+                        return;
+                    }
+                    
+                    log('✅ SunCalc library is ready.');
+                    calculateSunPath();
+                    startArLoop();
+                };
+
+                checkSunCalc();
+            }
 
             // ---- Sun Path Calculation and AR Loop ----
 
             function calculateSunPath() {
                 log('[SunPath] Calculating sun path for the day...');
-                // Ensure SunCalc library is available before proceeding
-                if (typeof SunCalc === 'undefined') {
-                    log('❌ error SunCalc: Library not loaded. Check script tag.');
-                    showMessage('The SunCalc library could not be loaded. Please check your internet connection.');
-                    return;
-                }
-
+                
                 sunPathPoints = [];
                 const now = new Date();
                 const times = SunCalc.getTimes(now, latitude, longitude);
