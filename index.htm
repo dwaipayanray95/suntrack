@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>SunTrack AR • Daylight Path Only</title>
+  <title>SunTrack AR • Relative Hour Labels</title>
   <style>
     html, body {
       margin:0; padding:0;
@@ -85,9 +85,7 @@
     btnCam.addEventListener('click', async ()=>{
       try {
         status.textContent = 'Opening camera…';
-        stream = await navigator.mediaDevices.getUserMedia({
-          video:{ facingMode:'environment' }, audio:false
-        });
+        stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
         vid.srcObject = stream;
         await vid.play();
         status.textContent = 'Camera OK';
@@ -118,8 +116,8 @@
       const h = e.webkitCompassHeading != null ? e.webkitCompassHeading : 360 - e.alpha;
       const p = e.beta - 90;
       rawH = h; rawP = p;
-      smoothH = smoothH*(1-SMOOTH) + rawH*SMOOTH;
-      smoothP = smoothP*(1-SMOOTH) + rawP*SMOOTH;
+      smoothH = smoothH*(1-SMOOTH)+rawH*SMOOTH;
+      smoothP = smoothP*(1-SMOOTH)+rawP*SMOOTH;
       status.textContent = `H:${smoothH.toFixed(1)}° P:${smoothP.toFixed(1)}°`;
       if(!onOri.last || Date.now()-onOri.last > 800){
         log('↻ H:', smoothH.toFixed(1)+'°', 'P:', smoothP.toFixed(1)+'°');
@@ -151,7 +149,7 @@
       }
     });
 
-    // compute full-day sun path
+    // compute full-day sun path with relative index
     function computeSunPath(){
       sunPath = [];
       const now = new Date();
@@ -160,62 +158,53 @@
         t.setMinutes(i*15);
         const pos = SunCalc.getPosition(t, lat, lng);
         sunPath.push({
-          az  : (pos.azimuth*180/Math.PI + 360) % 360,
-          alt : pos.altitude * 180/Math.PI,
-          time: t
+          i, 
+          az : (pos.azimuth*180/Math.PI + 360) % 360,
+          alt: pos.altitude * 180/Math.PI
         });
       }
       log('🎯 Sun path pts:', sunPath.length);
     }
 
-    // draw path with segments & hourly labels (daylight only)
+    // draw path & relative-hour labels
     function draw(){
       ctx.clearRect(0,0,cv.width,cv.height);
-      const w = cv.width, h = cv.height;
-      const vFOV = 2 * Math.atan(Math.tan((HFOV/2)*Math.PI/180) * (h/w)) * 180/Math.PI;
-      const halfH = HFOV/2, halfV = vFOV/2;
+      const w=cv.width, h=cv.height;
+      const vFOV = 2*Math.atan(Math.tan((HFOV/2)*Math.PI/180)*(h/w))*180/Math.PI;
+      const halfH=HFOV/2, halfV=vFOV/2;
 
       // horizon
-      const y0 = (0.5 - (-smoothP)/halfV) * h;
+      const y0=(0.5 - (-smoothP)/halfV)*h;
       ctx.strokeStyle='white'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(w,y0); ctx.stroke();
 
-      // path segments (altitude > 0)
+      // path segments (altitude>0)
       ctx.strokeStyle='yellow'; ctx.lineWidth=2;
-      let drawing = false;
+      let drawing=false;
       sunPath.forEach(pt=>{
-        if(pt.alt <= 0) {
-          if(drawing){ ctx.stroke(); drawing=false; }
-          return;
-        }
-        let rAz = pt.az - smoothH;
-        if(rAz > 180) rAz -= 360;
-        if(rAz < -180) rAz += 360;
-        let rAlt = pt.alt - smoothP;
-        const inFOV = Math.abs(rAz) <= halfH && Math.abs(rAlt) <= halfV;
-        if(inFOV){
-          const x = (0.5 + rAz/HFOV)*w;
-          const y = (0.5 - rAlt/vFOV)*h;
-          if(!drawing){ ctx.beginPath(); ctx.moveTo(x,y); drawing=true; }
+        if(pt.alt<=0){ if(drawing){ctx.stroke();drawing=false;} return; }
+        let rAz=pt.az - smoothH; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
+        let rAlt=pt.alt - smoothP;
+        if(Math.abs(rAz)<=halfH && Math.abs(rAlt)<=halfV){
+          const x=(0.5 + rAz/HFOV)*w;
+          const y=(0.5 - rAlt/vFOV)*h;
+          if(!drawing){ctx.beginPath();ctx.moveTo(x,y);drawing=true;}
           else ctx.lineTo(x,y);
-        } else if(drawing){
-          ctx.stroke(); drawing=false;
-        }
+        } else if(drawing){ctx.stroke();drawing=false;}
       });
       if(drawing) ctx.stroke();
 
-      // hourly labels (altitude > 0)
+      // relative-hour labels every full hour
       ctx.fillStyle='white'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
       sunPath.forEach(pt=>{
-        if(pt.alt > 0 && pt.time.getMinutes()===0){
-          let rAz = pt.az - smoothH;
-          if(rAz > 180) rAz -= 360;
-          if(rAz < -180) rAz += 360;
-          let rAlt = pt.alt - smoothP;
-          if(Math.abs(rAz) <= halfH && Math.abs(rAlt) <= halfV){
-            const x = (0.5 + rAz/HFOV)*w;
-            const y = (0.5 - rAlt/vFOV)*h;
-            ctx.fillText(`${pt.time.getHours()}:00`, x, y - 8);
+        if(pt.alt>0 && pt.i % 4 === 0){  // each 15min, so i%4==0 is each hour
+          const hr = pt.i/4;  // 0h,1h,...
+          let rAz=pt.az - smoothH; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
+          let rAlt=pt.alt - smoothP;
+          if(Math.abs(rAz)<=halfH && Math.abs(rAlt)<=halfV){
+            const x=(0.5 + rAz/HFOV)*w;
+            const y=(0.5 - rAlt/vFOV)*h;
+            ctx.fillText(`${hr}h`, x, y-8);
           }
         }
       });
@@ -225,17 +214,15 @@
 
     // start AR
     btnAR.addEventListener('click', ()=>{
-      if(!stream || lat===null){
-        log('❌ Missing prerequisites'); return;
-      }
-      status.textContent = 'Starting AR';
-      cv.width  = vid.videoWidth || innerWidth;
-      cv.height = vid.videoHeight || innerHeight;
-      ctx = cv.getContext('2d');
+      if(!stream||lat===null){ log('❌ Missing prerequisites'); return; }
+      status.textContent='Starting AR';
+      cv.width=vid.videoWidth||innerWidth;
+      cv.height=vid.videoHeight||innerHeight;
+      ctx=cv.getContext('2d');
       computeSunPath();
       if(raf) cancelAnimationFrame(raf);
       draw();
-      status.textContent = 'AR Active';
+      status.textContent='AR Active';
       log('🎉 AR started');
     });
 
