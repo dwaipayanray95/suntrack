@@ -107,7 +107,8 @@
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        // Use window.onload to ensure all scripts are loaded before starting
+        window.onload = function() {
             // Get DOM elements
             const mainUI = document.getElementById('main-ui');
             const videoContainer = document.getElementById('video-container');
@@ -228,48 +229,40 @@
             // Request Gyroscope permission (Step 3)
             function requestGyroscope() {
                 log('[click] requesting gyroscope…');
-                if (window.DeviceOrientationEvent) {
-                    const handleOrientation = (event) => {
-                        // We only care about alpha and beta for now
-                        if (event.alpha !== null && event.beta !== null) {
-                            heading = event.alpha;
-                            pitch = event.beta;
-                        }
-                    };
-
-                    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                        DeviceOrientationEvent.requestPermission()
-                            .then(permissionState => {
-                                if (permissionState === 'granted') {
-                                    window.addEventListener('deviceorientation', handleOrientation);
-                                    log('✅ success gyroscope');
-                                    updateUI('ar');
-                                } else {
-                                    log('❌ error gyroscope: Permission denied');
-                                    showMessage("Device motion permission denied. Please enable it in your browser settings.");
-                                }
-                            })
-                            .catch(error => {
-                                log('❌ error gyroscope:', error);
-                                showMessage("There was an error requesting device motion. Please try again.");
-                            });
-                    } else {
-                        // Non-iOS browsers, permission is not needed, but check for support
-                        window.addEventListener('deviceorientation', handleOrientation);
-                        // Add a timeout to check if the event listener is actually firing.
-                        setTimeout(() => {
-                            if (heading === 0 && pitch === 0) {
-                                log('❌ error gyroscope: Device motion not detected, sensor might not be supported or active.');
-                                showMessage("Your device does not seem to be sending motion data. This feature might not be supported.");
-                            } else {
-                                log('✅ success gyroscope (no permission prompt needed)');
-                                updateUI('ar');
-                            }
-                        }, 2000); // Wait 2 seconds to check if data is coming in
-                    }
-                } else {
+                if (!window.DeviceOrientationEvent) {
                     log('❌ error gyroscope: Not supported');
                     showMessage("Your device does not support the necessary motion sensors for this AR application.");
+                    return;
+                }
+
+                const handleOrientation = (event) => {
+                    if (event.alpha !== null && event.beta !== null) {
+                        heading = event.alpha;
+                        pitch = event.beta;
+                    }
+                };
+
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission()
+                        .then(permissionState => {
+                            if (permissionState === 'granted') {
+                                window.addEventListener('deviceorientation', handleOrientation);
+                                log('✅ success gyroscope');
+                                updateUI('ar');
+                            } else {
+                                log('❌ error gyroscope: Permission denied');
+                                showMessage("Device motion permission denied. Please enable it in your browser settings.");
+                            }
+                        })
+                        .catch(error => {
+                            log('❌ error gyroscope:', error);
+                            showMessage("There was an error requesting device motion. Please try again.");
+                        });
+                } else {
+                    // Non-iOS browsers, permission is not needed, so assume success
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    log('✅ success gyroscope (no permission prompt needed)');
+                    updateUI('ar');
                 }
             }
 
@@ -277,6 +270,13 @@
 
             function calculateSunPath() {
                 log('[SunPath] Calculating sun path for the day...');
+                // Ensure SunCalc library is available before proceeding
+                if (typeof SunCalc === 'undefined') {
+                    log('❌ error SunCalc: Library not loaded. Check script tag.');
+                    showMessage('The SunCalc library could not be loaded. Please check your internet connection.');
+                    return;
+                }
+
                 sunPathPoints = [];
                 const now = new Date();
                 const times = SunCalc.getTimes(now, latitude, longitude);
@@ -408,7 +408,10 @@
                     .then(p => log('permissions.state =', p.state))
                     .catch(()=>{});
             }
-        });
+
+            // Initial UI update
+            updateUI('location');
+        };
     </script>
 </body>
 </html>
