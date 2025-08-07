@@ -1,740 +1,433 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>SunTrack AR - Debugged</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #1f2937;
-            color: #d1d5db;
-        }
-        #app-name {
-            font-family: 'Poppins', sans-serif;
-        }
-        #ar-view {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            overflow: hidden;
-        }
-        #videoElement {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            min-width: 100%;
-            min-height: 100%;
-            width: auto;
-            height: auto;
-            z-index: 1;
-            object-fit: cover;
-        }
-        #canvasElement {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
-            background: transparent;
-        }
-        #permission-buttons {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) scale(0.9);
-            z-index: 20;
-            width: 80%;
-            max-width: 400px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 1.5rem;
-            text-align: center;
-            backdrop-filter: blur(5px);
-            border-radius: 1rem;
-            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
-            opacity: 0;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        #permission-buttons.active {
-            opacity: 1;
-            pointer-events: auto;
-            transform: translate(-50%, -50%) scale(1);
-        }
-        #loading-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 1.5rem;
-            z-index: 11;
-            text-shadow: 1px 1px 2px black;
-        }
-        .debug-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            max-height: 40vh;
-            width: 100%;
-            overflow: auto;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: #8cf;
-            padding: 1rem;
-            font-size: 0.75rem;
-            white-space: pre-wrap;
-            z-index: 9999;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-            display: none;
-        }
-        #toggle-debug-btn {
-            position: fixed;
-            bottom: 40vh;
-            right: 1rem;
-            z-index: 10000;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: #8cf;
-            padding: 8px 12px;
-            font-size: 12px;
-            border-radius: 8px 8px 0 0;
-            cursor: pointer;
-            border: none;
-        }
-        #debug-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 100;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            padding: 1rem;
-        }
-        .debug-panel {
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 0.75rem;
-            margin-bottom: 0.5rem;
-            border-radius: 8px;
-            max-width: 300px;
-            font-size: 0.85rem;
-        }
-        .debug-value {
-            color: #ffcc00;
-            font-weight: bold;
-        }
-        #orientation-indicator {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 100px;
-            height: 100px;
-            transform: translate(-50%, -50%);
-            z-index: 15;
-        }
-        .axis {
-            position: absolute;
-            width: 2px;
-            background: red;
-            transform-origin: center bottom;
-        }
-        .axis-x {
-            height: 100%;
-            background: red;
-            left: 50%;
-        }
-        .axis-y {
-            height: 100%;
-            background: green;
-            top: 50%;
-            transform: rotate(90deg);
-        }
-        .axis-z {
-            height: 100%;
-            background: blue;
-            left: 50%;
-            top: 50%;
-            transform: rotate(90deg);
-        }
-        #debug-controls {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 10001;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 1rem;
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        #debug-controls button {
-            background: #4a5568;
-            color: white;
-            border: none;
-            padding: 0.5rem;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        #debug-controls button.active {
-            background: #4299e1;
-        }
-        #calibration-mode {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.8);
-            padding: 2rem;
-            border-radius: 1rem;
-            text-align: center;
-            z-index: 100;
-            display: none;
-        }
-    </style>
-</head>
-<body class="flex items-center justify-center min-h-screen p-4">
-    <div id="ar-view">
-        <video id="videoElement" playsinline autoplay muted></video>
-        <canvas id="canvasElement"></canvas>
-        <div id="orientation-indicator">
-            <div class="axis axis-x"></div>
-            <div class="axis axis-y"></div>
-            <div class="axis axis-z"></div>
-        </div>
-        <div id="debug-overlay">
-            <div class="debug-panel">
-                Device Motion: <span id="device-motion-status" class="debug-value">inactive</span>
-            </div>
-            <div class="debug-panel">
-                Heading: <span id="heading-value" class="debug-value">0°</span>
-            </div>
-            <div class="debug-panel">
-                Pitch: <span id="pitch-value" class="debug-value">0°</span>
-            </div>
-            <div class="debug-panel">
-                Sun Azimuth: <span id="sun-azimuth-value" class="debug-value">0°</span>
-            </div>
-            <div class="debug-panel">
-                Sun Altitude: <span id="sun-altitude-value" class="debug-value">0°</span>
-            </div>
-        </div>
-        <div id="permission-buttons">
-            <h1 id="app-name" class="text-3xl font-bold mb-2">SunTrack AR</h1>
-            <p class="text-gray-400 mb-6" id="status-message">
-                Let's get started by getting your location.
-            </p>
-            <button id="main-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
-                Get Location
-            </button>
-        </div>
-        <div id="loading-message" class="hidden">Calculating sun path...</div>
-        <div id="messageBox" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
-            <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full text-center">
-                <p id="messageText" class="text-gray-800 text-lg"></p>
-                <button id="closeMessageButton" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded">Close</button>
-            </div>
-        </div>
-        <div class="debug-container" id="debug-box"></div>
-        <button id="toggle-debug-btn"><span id="debug-arrow">▼</span> Debug</button>
-        <div id="debug-controls">
-            <button id="toggle-calibration" class="active">Calibration Mode</button>
-            <button id="reset-orientation">Reset Orientation</button>
-            <button id="simulate-motion">Simulate Motion</button>
-        </div>
-        <div id="calibration-mode">
-            <h2 class="text-xl font-bold mb-4">Calibration Mode</h2>
-            <p class="mb-4">Point your device toward the actual sun to calibrate.</p>
-            <div class="flex justify-center gap-4">
-                <button id="confirm-calibration" class="px-4 py-2 bg-green-600 text-white rounded">Confirm Calibration</button>
-                <button id="cancel-calibration" class="px-4 py-2 bg-gray-600 text-white rounded">Cancel</button>
-            </div>
-        </div>
-    </div>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>SunTrack AR - Fixed</title>
+  <style>
+    /* Safe‐area / layout */
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      overflow: hidden;
+      background: #000; color: #fff;
+      font-family: system-ui, sans-serif;
+    }
+    video {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; object-fit: cover;
+      z-index: 1;
+    }
+    canvas#cv {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%; object-fit: cover;
+      z-index: 2;
+    }
+    /* Debug pane at top */
+    #debug {
+      position: fixed; top: env(safe-area-inset-top); left: 0; right: 0;
+      height: 140px; background: rgba(0,0,0,0.8);
+      color: #0f8; font-family: monospace; font-size: 12px;
+      padding: 6px; overflow-y: auto; z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      margin: 0;
+    }
+    /* Controls at bottom */
+    #controls {
+      position: fixed; bottom: env(safe-area-inset-bottom); left: 0; right: 0;
+      display: flex; gap: 6px; padding: 8px;
+      background: rgba(0,0,0,0.7); z-index: 1000;
+    }
+    button {
+      flex: 1; padding: 10px; font-size: 14px;
+      background: #222; color: #fff; border: none; border-radius: 4px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.4; }
     
-    <script>
-        const rad = Math.PI / 180;
-        const toDeg = 180 / Math.PI;
-        let calibrationOffset = 0;
+    /* Calibration mode */
+    #calibration {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 3000;
+      display: none;
+    }
+    
+    /* Orientation indicator */
+    #orientation-indicator {
+      position: fixed;
+      top: 150px;
+      right: 20px;
+      width: 100px;
+      height: 100px;
+      z-index: 2000;
+      background: rgba(0,0,0,0.5);
+      border-radius: 50%;
+    }
+    .axis {
+      position: absolute;
+      transform-origin: center;
+      background: red;
+    }
+    .axis-x {
+      width: 2px;
+      height: 100%;
+      left: 50%;
+    }
+    .axis-y {
+      width: 100%;
+      height: 2px;
+      top: 50%;
+    }
+    .axis-z {
+      width: 100%;
+      height: 100%;
+      border: 1px dashed #0f8;
+      border-radius: 50%;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+
+  <video id="vid" playsinline autoplay muted></video>
+  <canvas id="cv"></canvas>
+  
+  <div id="orientation-indicator">
+    <div class="axis axis-x"></div>
+    <div class="axis axis-y"></div>
+    <div class="axis axis-z"></div>
+  </div>
+
+  <pre id="debug">[ready]\n</pre>
+
+  <div id="controls">
+    <button id="btnCam">Start Camera</button>
+    <button id="btnGeo" disabled>Get Location</button>
+    <button id="btnGyro" disabled>Enable Motion</button>
+    <button id="btnAR" disabled>Start AR</button>
+    <button id="btnCalibrate">Calibrate</button>
+    <button id="btnCopy">Copy Logs</button>
+  </div>
+  
+  <div id="calibration">
+    <h2>Calibration Mode</h2>
+    <p>Point your device at the actual sun</p>
+    <div style="display: flex; gap: 10px; margin-top: 15px;">
+      <button id="btnConfirmCal">Confirm</button>
+      <button id="btnCancelCal">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    // —— DOM refs & state ——
+    const vid = document.getElementById('vid');
+    const cv  = document.getElementById('cv');
+    const logEl = document.getElementById('debug');
+    const orientationIndicator = document.getElementById('orientation-indicator');
+    const calibrationPanel = document.getElementById('calibration');
+    let stream, lat, lng, heading, pitch, roll;
+    let sunPath = [], ctx2d;
+    let calibrationOffset = 0;
+    let isCalibrating = false;
+    let lastOrientationLog = 0;
+
+    // —— Logging helper ——
+    function log(...args) {
+      logEl.textContent += args.join(' ') + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // —— Sun math ——
+    const rad = Math.PI/180, toDeg = 180/Math.PI;
+    function toDays(date) {
+      return date.getTime()/86400000 - 0.5 + 2440588 - 2451545;
+    }
+    function getSunPosition(date, lat, lng) {
+      const lw  = rad*-lng, phi = rad*lat, d = toDays(date);
+      const M   = rad*(357.5291 + .98560028*d);
+      const C   = rad*(1.9148*Math.sin(M) + .02*Math.sin(2*M) + .0003*Math.sin(3*M));
+      const L   = M + C + rad*280.4665;
+      const dec = Math.asin(Math.sin(rad*23.44)*Math.sin(L));
+      const ra  = Math.atan2(Math.cos(rad*23.44)*Math.sin(L), Math.cos(L));
+      const J   = date.getTime()/86400000 + 2440587.5;
+      const gst = (J-2451545.0)*.985647362 + 280.460618;
+      const ha  = rad*(gst + lng) - ra;
+      const alt = Math.asin(Math.sin(phi)*Math.sin(dec) + Math.cos(phi)*Math.cos(dec)*Math.cos(ha));
+      const az  = Math.atan2(Math.sin(ha),
+                    Math.cos(ha)*Math.sin(phi) - Math.tan(dec)*Math.cos(phi));
+      return { azimuth:(az*toDeg+360)%360, altitude:alt*toDeg };
+    }
+
+    // —— 1) Camera ——
+    document.getElementById('btnCam').onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ 
+            facingMode:'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }, 
+          audio:false
+        });
+        vid.srcObject = stream;
         
-        function toDays(date) {
-            return date.getTime() / 86400000 - 0.5 + 2440588 - 2451545;
-        }
+        // Wait for video to load metadata
+        await new Promise(resolve => {
+          vid.onloadedmetadata = resolve;
+        });
         
-        function getSunPosition(date, lat, lng) {
-            const lw = rad * -lng;
-            const phi = rad * lat;
-            const d = toDays(date);
-            const M = rad * (357.5291 + 0.98560028 * d);
-            const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
-            const L = M + C + rad * 280.4665;
-            const dec = Math.asin(Math.sin(rad * 23.44) * Math.sin(L));
-            const ra = Math.atan2(Math.cos(rad * 23.44) * Math.sin(L), Math.cos(L));
-            const J = date.getTime() / 86400000 + 2440587.5;
-            const gst = (J - 2451545.0) * 0.985647362 + 280.460618;
-            const ha = rad * (gst + lng) - ra;
-            const altitude = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(ha));
-            const azimuth = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));
-            return {
-                azimuth: (azimuth * toDeg + 360) % 360,
-                altitude: altitude * toDeg
-            };
-        }
+        log('✅ Camera OK - Dimensions:', vid.videoWidth, 'x', vid.videoHeight);
+        document.getElementById('btnGeo').disabled = false;
+      } catch (e) {
+        log('❌ Camera ERR', e.name, e.message);
+      }
+    };
+
+    // —— 2) Geolocation ——
+    document.getElementById('btnGeo').onclick = () => {
+      if (!navigator.geolocation) return log('❌ No geolocation API');
+      navigator.geolocation.getCurrentPosition(pos => {
+        lat = pos.coords.latitude; 
+        lng = pos.coords.longitude;
+        log('✅ Geo OK', lat.toFixed(6), lng.toFixed(6));
+        document.getElementById('btnGyro').disabled = false;
+      }, err => {
+        log('❌ Geo ERR', err.code, err.message);
+      }, { enableHighAccuracy:true, timeout:10000 });
+    };
+
+    // —— 3) Device Motion ——
+    function handleOri(e) {
+      // Get device orientation with calibration offset
+      heading = e.webkitCompassHeading != null
+        ? (e.webkitCompassHeading + calibrationOffset) % 360 
+        : ((360 - e.alpha) + calibrationOffset) % 360;
+      
+      pitch = e.beta;
+      roll = e.gamma;
+      
+      // Normalize angles
+      if (heading > 180) heading -= 360;
+      if (heading < -180) heading += 360;
+      if (pitch > 180) pitch -= 360;
+      if (pitch < -180) pitch += 360;
+      
+      // Update orientation indicator
+      orientationIndicator.style.transform = `rotate(${-heading}deg)`;
+      
+      // Throttle logging
+      const now = Date.now();
+      if (now - lastOrientationLog > 1000) {
+        log('↻ Motion', 
+            'H:', heading.toFixed(1)+'°', 
+            'P:', pitch.toFixed(1)+'°', 
+            'R:', roll.toFixed(1)+'°');
+        lastOrientationLog = now;
+      }
+    }
+    
+    document.getElementById('btnGyro').onclick = () => {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state==='granted') {
+            window.addEventListener('deviceorientation', handleOri);
+            log('✅ Gyro OK');
+            document.getElementById('btnAR').disabled = false;
+          } else log('❌ Gyro DENIED');
+        }).catch(err => log('❌ Gyro ERR', err));
+      } else {
+        window.addEventListener('deviceorientation', handleOri);
+        log('✅ Gyro OK (no prompt)');
+        document.getElementById('btnAR').disabled = false;
+      }
+    };
+    
+    // —— Calibration functions ——
+    document.getElementById('btnCalibrate').onclick = () => {
+      calibrationPanel.style.display = 'block';
+      isCalibrating = true;
+      log('🔧 Calibration mode started');
+    };
+    
+    document.getElementById('btnConfirmCal').onclick = () => {
+      // Calculate offset based on actual sun position
+      const now = new Date();
+      const sunPos = getSunPosition(now, lat, lng);
+      calibrationOffset = (360 - heading - sunPos.azimuth) % 360;
+      
+      calibrationPanel.style.display = 'none';
+      isCalibrating = false;
+      log('✅ Calibration complete. Offset:', calibrationOffset.toFixed(1)+'°');
+    };
+    
+    document.getElementById('btnCancelCal').onclick = () => {
+      calibrationPanel.style.display = 'none';
+      isCalibrating = false;
+      log('❌ Calibration cancelled');
+    };
+
+    // —— Sun path compute ——
+    function calculateSunPath() {
+      sunPath = [];
+      const now = new Date();
+      for (let i=0; i<96; i++) {
+        const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        t.setMinutes(i*15);
+        sunPath.push(getSunPosition(t, lat, lng));
+      }
+      log(`🎯 Sun path: ${sunPath.length} points`);
+    }
+
+    // —— AR overlay draw ——
+    function drawAR() {
+      if (!ctx2d) return;
+      
+      // Clear canvas
+      ctx2d.clearRect(0,0,cv.width,cv.height);
+      
+      // Field of view settings
+      const halfH = 30; // Horizontal FOV half (60° total)
+      const halfV = 22.5; // Vertical FOV half (45° total)
+      
+      // Draw horizon line with roll compensation
+      if (roll !== undefined && !isCalibrating) {
+        const centerY = cv.height / 2;
+        const tilt = roll * rad;
+        const slope = Math.tan(tilt);
+        const intercept = centerY - slope * (cv.width / 2);
         
-        window.onload = function() {
-            const debugBox = document.getElementById('debug-box');
-            const toggleDebugBtn = document.getElementById('toggle-debug-btn');
-            const debugArrow = document.getElementById('debug-arrow');
-            const loadingMessage = document.getElementById('loading-message');
-            const permissionButtonsContainer = document.getElementById('permission-buttons');
-            const statusMessage = document.getElementById('status-message');
-            const mainButton = document.getElementById('main-btn');
-            const videoElement = document.getElementById('videoElement');
-            const canvasElement = document.getElementById('canvasElement');
-            const messageBox = document.getElementById('messageBox');
-            const messageText = document.getElementById('messageText');
-            const closeMessageButton = document.getElementById('closeMessageButton');
-            const deviceMotionStatus = document.getElementById('device-motion-status');
-            const headingValue = document.getElementById('heading-value');
-            const pitchValue = document.getElementById('pitch-value');
-            const sunAzimuthValue = document.getElementById('sun-azimuth-value');
-            const sunAltitudeValue = document.getElementById('sun-altitude-value');
-            const toggleCalibrationBtn = document.getElementById('toggle-calibration');
-            const resetOrientationBtn = document.getElementById('reset-orientation');
-            const simulateMotionBtn = document.getElementById('simulate-motion');
-            const calibrationMode = document.getElementById('calibration-mode');
-            const confirmCalibrationBtn = document.getElementById('confirm-calibration');
-            const cancelCalibrationBtn = document.getElementById('cancel-calibration');
+        ctx2d.strokeStyle='rgba(255,255,255,0.8)'; 
+        ctx2d.lineWidth=3;
+        ctx2d.beginPath(); 
+        ctx2d.moveTo(0, slope * 0 + intercept); 
+        ctx2d.lineTo(cv.width, slope * cv.width + intercept); 
+        ctx2d.stroke();
+        
+        // Label the horizon
+        ctx2d.fillStyle = "white";
+        ctx2d.font = "bold 16px sans-serif";
+        ctx2d.textAlign = "center";
+        ctx2d.fillText("Horizon", cv.width/2, slope * (cv.width/2) + intercept - 15);
+      }
+      
+      // Draw sun path arc
+      if (sunPath.length > 0 && !isCalibrating) {
+        ctx2d.strokeStyle='rgba(255,255,0,0.7)'; 
+        ctx2d.lineWidth=3;
+        ctx2d.beginPath();
+        
+        sunPath.forEach((pt,i) => {
+          let relAz = pt.azimuth - heading;
+          if (relAz > 180) relAz -= 360;
+          if (relAz < -180) relAz += 360;
+          
+          let relAlt = pt.altitude - pitch;
+          
+          // Only draw if within FOV
+          if (Math.abs(relAz) <= halfH && Math.abs(relAlt) <= halfV) {
+            const x = ((relAz + halfH) / (halfH * 2)) * cv.width;
+            const y = ((-relAlt + halfV) / (halfV * 2)) * cv.height;
             
-            // Global variables
-            let latitude = null;
-            let longitude = null;
-            let heading = 0;
-            let pitch = 0;
-            let hasDeviceMotion = false;
-            const horizontalFOV = 60;
-            const verticalFOV = 45;
-            let sunPathPoints = [];
-            let animationFrameId = null;
-            let isCalibrating = false;
-            let calibrationStartHeading = 0;
-            
-            // Debug log
-            const log = (...a) => {
-                debugBox.textContent += a.join(' ') + '\n';
-                debugBox.scrollTop = debugBox.scrollHeight;
-            };
-            
-            // UI state management
-            const updateUI = (step) => {
-                log(`[UI State] Moving to step: ${step}`);
-                if (step === 'location') {
-                    permissionButtonsContainer.classList.add('active');
-                    statusMessage.textContent = 'Your camera is ready. Please allow location access to calculate the sun path.';
-                    mainButton.textContent = 'Get Location';
-                    mainButton.onclick = requestGeolocation;
-                } else if (step === 'gyro') {
-                    statusMessage.textContent = 'Location found! Last step: enable device motion for AR tracking.';
-                    mainButton.textContent = 'Enable Device Motion';
-                    mainButton.onclick = requestGyroscope;
-                } else if (step === 'ar') {
-                    log('[UI State] All permissions granted. Starting AR view.');
-                    permissionButtonsContainer.classList.remove('active');
-                    startArLoop();
-                }
-            };
-            
-            // Custom message box
-            const showMessage = (message) => {
-                messageText.textContent = message;
-                messageBox.style.display = 'flex';
-                closeMessageButton.onclick = () => {
-                    messageBox.style.display = 'none';
-                };
-            };
-            
-            // Request Geolocation
-            const requestGeolocation = () => {
-                log('[User Action] Requesting geolocation...');
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        latitude = pos.coords.latitude;
-                        longitude = pos.coords.longitude;
-                        log('✅ Geolocation successful:', latitude, longitude);
-                        updateUI('gyro');
-                    },
-                    (err) => {
-                        log('❌ Geolocation error:', err.code, err.message);
-                        showMessage(`Error: ${err.message}. Please enable location services.`);
-                    },
-                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                );
-            };
-            
-            // Request Camera with fallback canvas size
-            const requestCamera = async () => {
-                log('[User Action] Requesting camera...');
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-                        audio: false
-                    });
-                    videoElement.srcObject = stream;
-                    await videoElement.play();
-                    videoElement.onloadedmetadata = () => {
-                        // Set canvas dimensions to match video's intrinsic size
-                        canvasElement.width = videoElement.videoWidth;
-                        canvasElement.height = videoElement.videoHeight;
-                        // Fallback if video size is not available
-                        if (!canvasElement.width || !canvasElement.height) {
-                            canvasElement.width = window.innerWidth;
-                            canvasElement.height = window.innerHeight;
-                            log('⚠️ Fallback: canvas size set to window dimensions', canvasElement.width, canvasElement.height);
-                        } else {
-                            log('✅ Canvas size:', canvasElement.width, canvasElement.height);
-                        }
-                    };
-                    // In case onloadedmetadata never fires (some Android browsers), set fallback immediately
-                    setTimeout(() => {
-                        if (!canvasElement.width || !canvasElement.height) {
-                            canvasElement.width = window.innerWidth;
-                            canvasElement.height = window.innerHeight;
-                            log('⚠️ Timed fallback: canvas size set to window dimensions', canvasElement.width, canvasElement.height);
-                        }
-                    }, 1500);
-                    log('✅ Camera access granted.');
-                    updateUI('location');
-                } catch (err) {
-                    log('❌ Camera error:', err.name, err.message);
-                    showMessage(`Error: ${err.message}. Please allow camera access.`);
-                }
-            };
-            
-            // Request Gyroscope
-            const requestGyroscope = () => {
-                log('[User Action] Requesting gyroscope...');
-                if (!window.DeviceOrientationEvent) {
-                    log('❌ Gyroscope error: DeviceOrientationEvent not supported.');
-                    showMessage("Your device does not support the necessary motion sensors for this AR application.");
-                    return;
-                }
-                
-                const handleOrientation = (event) => {
-                    if (event.alpha !== null) {
-                        heading = (event.alpha + calibrationOffset) % 360;
-                    }
-                    if (event.beta !== null) {
-                        pitch = event.beta;
-                        // Normalize pitch to [-90, 90] for better visualization
-                        if (pitch > 180) pitch -= 360;
-                        if (pitch < -180) pitch += 360;
-                    }
-                    hasDeviceMotion = true;
-                    deviceMotionStatus.textContent = 'active';
-                    deviceMotionStatus.style.color = '#00ff00';
-                    
-                    // Update debug values
-                    headingValue.textContent = `${heading.toFixed(1)}°`;
-                    pitchValue.textContent = `${pitch.toFixed(1)}°`;
-                    
-                    // Update orientation indicator
-                    updateOrientationIndicator();
-                };
-                
-                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    DeviceOrientationEvent.requestPermission()
-                        .then(permissionState => {
-                            if (permissionState === 'granted') {
-                                window.addEventListener('deviceorientation', handleOrientation);
-                                log('✅ Gyroscope permission granted.');
-                                updateUI('ar');
-                            } else {
-                                log('❌ Gyroscope error: Permission denied by user.');
-                                showMessage("Device motion permission denied. Please enable it in your browser settings for this app to work.");
-                            }
-                        })
-                        .catch(error => {
-                            log('❌ Gyroscope error:', error);
-                            showMessage("There was an unexpected error requesting device motion. Please try again or check your device settings.");
-                        });
-                } else {
-                    window.addEventListener('deviceorientation', handleOrientation);
-                    log('✅ Gyroscope access granted (no permission prompt needed)');
-                    updateUI('ar');
-                }
-            };
-            
-            // Update orientation indicator
-            const updateOrientationIndicator = () => {
-                const indicator = document.getElementById('orientation-indicator');
-                // Rotate based on heading
-                indicator.style.transform = `translate(-50%, -50%) rotate(${-heading}deg)`;
-            };
-            
-            // Sun Path Calculation
-            const calculateSunPath = () => {
-                log('[Sun Path] Calculating path for the day...');
-                loadingMessage.classList.remove('hidden');
-                sunPathPoints = [];
-                if (latitude === null || longitude === null) {
-                    log('❌ No latitude/longitude!');
-                    loadingMessage.classList.add('hidden');
-                    showMessage("Could not get your location. Please enable location permissions.");
-                    return;
-                }
-                const now = new Date();
-                for (let i = 0; i < 96; i++) {
-                    const time = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-                    time.setMinutes(i * 15);
-                    const pos = getSunPosition(time, latitude, longitude);
-                    sunPathPoints.push({
-                        azimuth: pos.azimuth,
-                        altitude: pos.altitude,
-                        time: time
-                    });
-                }
-                log('[Sun Path] Calculation complete. Points:', sunPathPoints.length, 'Lat/Lon:', latitude, longitude);
-                loadingMessage.classList.add('hidden');
-            };
-            
-            // AR overlay drawing
-            const drawArOverlay = () => {
-                const ctx = canvasElement.getContext('2d');
-                ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            i === 0 ? ctx2d.moveTo(x, y) : ctx2d.lineTo(x, y);
+          }
+        });
+        
+        ctx2d.stroke();
+      }
+      
+      // Draw current sun position
+      if (lat !== null && lng !== null && !isCalibrating) {
+        const now = new Date();
+        const sunPos = getSunPosition(now, lat, lng);
+        
+        let relAz = sunPos.azimuth - heading;
+        if (relAz > 180) relAz -= 360;
+        if (relAz < -180) relAz += 360;
+        
+        let relAlt = sunPos.altitude - pitch;
+        
+        const sunX = ((relAz + halfH) / (halfH * 2)) * cv.width;
+        const sunY = ((-relAlt + halfV) / (halfV * 2)) * cv.height;
+        
+        // Draw sun with glow effect
+        ctx2d.shadowColor = 'rgba(255, 200, 0, 0.7)';
+        ctx2d.shadowBlur = 15;
+        ctx2d.fillStyle = 'rgba(255, 200, 0, 1)';
+        ctx2d.beginPath();
+        ctx2d.arc(sunX, sunY, 15, 0, Math.PI * 2);
+        ctx2d.fill();
+        
+        // Reset shadow
+        ctx2d.shadowBlur = 0;
+        
+        // Label the sun
+        ctx2d.fillStyle = "white";
+        ctx2d.font = "bold 16px sans-serif";
+        ctx2d.textAlign = "center";
+        ctx2d.fillText("☀️ Sun", sunX, sunY - 25);
+        
+        // Log sun position for debugging
+        log('☀️ Sun:', 
+            'Azimuth:', sunPos.azimuth.toFixed(1) + '°', 
+            'Altitude:', sunPos.altitude.toFixed(1) + '°',
+            'Screen:', sunX.toFixed(0), sunY.toFixed(0));
+      }
+      
+      // Draw crosshair for reference
+      ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+      ctx2d.lineWidth = 1;
+      ctx2d.beginPath();
+      ctx2d.moveTo(cv.width/2, 0);
+      ctx2d.lineTo(cv.width/2, cv.height);
+      ctx2d.moveTo(0, cv.height/2);
+      ctx2d.lineTo(cv.width, cv.height/2);
+      ctx2d.stroke();
+      
+      // Draw center point
+      ctx2d.fillStyle = 'red';
+      ctx2d.beginPath();
+      ctx2d.arc(cv.width/2, cv.height/2, 5, 0, Math.PI*2);
+      ctx2d.fill();
+      
+      requestAnimationFrame(drawAR);
+    }
 
-                const halfFOV_H = horizontalFOV / 2;
-                const halfFOV_V = verticalFOV / 2;
+    // —— 4) Start AR ——
+    document.getElementById('btnAR').onclick = () => {
+      const ok = !!stream && lat != null;
+      log(ok ? '🎉 All set — starting AR!' : '❌ Missing prerequisites');
+      if (!ok) return;
+      
+      // Set canvas dimensions to match video
+      cv.width  = vid.videoWidth || window.innerWidth;
+      cv.height = vid.videoHeight || window.innerHeight;
+      
+      ctx2d = cv.getContext('2d');
+      calculateSunPath();
+      
+      // Start AR rendering loop
+      drawAR();
+    };
 
-                if (!hasDeviceMotion) {
-                    ctx.fillStyle = "white";
-                    ctx.textAlign = "center";
-                    ctx.font = "bold 18px sans-serif";
-                    ctx.fillText("Waiting for device motion data...", canvasElement.width / 2, canvasElement.height / 2);
-                } else {
-                    const currentHeading = heading;
-                    const currentPitch = pitch;
-
-                    // Draw the horizon line
-                    const horizonRelativeAltitude = 0 - currentPitch;
-                    const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    const clampedHorizonY = Math.max(0, Math.min(canvasElement.height, horizonY));
-                    ctx.moveTo(0, clampedHorizonY);
-                    ctx.lineTo(canvasElement.width, clampedHorizonY);
-                    ctx.stroke();
-                    ctx.fillStyle = "white";
-                    ctx.textAlign = "center";
-                    ctx.font = "bold 16px sans-serif";
-                    ctx.fillText("Horizon", canvasElement.width / 2, clampedHorizonY - 15);
-
-                    // Draw the sun path arc for the day
-                    if (sunPathPoints.length > 0) {
-                        ctx.save();
-                        ctx.beginPath();
-                        let pathStarted = false;
-                        sunPathPoints.forEach((point, index) => {
-                            // Calculate relative azimuth and altitude for camera orientation
-                            let relativeAzimuth = point.azimuth - currentHeading;
-                            if (relativeAzimuth > 180) relativeAzimuth -= 360;
-                            if (relativeAzimuth < -180) relativeAzimuth += 360;
-                            const relativeAltitude = point.altitude - currentPitch;
-
-                            // Only plot points within a reasonable field of view for smoothness
-                            if (Math.abs(relativeAzimuth) <= halfFOV_H * 2 && Math.abs(relativeAltitude) <= halfFOV_V * 2) {
-                                const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                                const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-
-                                if (!pathStarted) {
-                                    ctx.moveTo(x, y);
-                                    pathStarted = true;
-                                } else {
-                                    ctx.lineTo(x, y);
-                                }
-
-                                // Add hour markers every 3 hours
-                                const hour = point.time.getHours();
-                                if (hour % 3 === 0 && point.time.getMinutes() === 0) {
-                                    ctx.save();
-                                    ctx.translate(x, y);
-                                    ctx.fillStyle = "yellow";
-                                    ctx.font = "bold 12px sans-serif";
-                                    ctx.textAlign = "center";
-                                    ctx.fillText(`${hour}:00`, 0, -18);
-                                    ctx.restore();
-
-                                    // Draw a small circle at the hour marker
-                                    ctx.save();
-                                    ctx.beginPath();
-                                    ctx.arc(x, y, 5, 0, 2 * Math.PI);
-                                    ctx.fillStyle = "rgba(255,255,0,0.6)";
-                                    ctx.fill();
-                                    ctx.restore();
-                                }
-                            }
-                        });
-                        ctx.strokeStyle = 'rgba(255, 255, 0, 0.88)';
-                        ctx.lineWidth = 3;
-                        ctx.shadowColor = 'rgba(255,255,0,0.28)';
-                        ctx.shadowBlur = 5;
-                        ctx.stroke();
-                        ctx.restore();
-                    }
-
-                    // Draw the current sun position
-                    const now = new Date();
-                    const currentSunPos = getSunPosition(now, latitude, longitude);
-                    sunAzimuthValue.textContent = `${currentSunPos.azimuth.toFixed(1)}°`;
-                    sunAltitudeValue.textContent = `${currentSunPos.altitude.toFixed(1)}°`;
-                    
-                    let currentRelativeAzimuth = currentSunPos.azimuth - currentHeading;
-                    if (currentRelativeAzimuth > 180) currentRelativeAzimuth -= 360;
-                    if (currentRelativeAzimuth < -180) currentRelativeAzimuth += 360;
-                    const currentRelativeAltitude = currentSunPos.altitude - currentPitch;
-                    let sunX = (currentRelativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                    let sunY = (-currentRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                    const isSunVisible = (sunX >= 0 && sunX <= canvasElement.width && sunY >= 0 && sunY <= canvasElement.height);
-                    const padding = 20;
-                    if (!isSunVisible) {
-                        const originalSunX = sunX;
-                        const originalSunY = sunY;
-                        sunX = Math.max(padding, Math.min(canvasElement.width - padding, sunX));
-                        sunY = Math.max(padding, Math.min(canvasElement.height - padding, sunY));
-                        ctx.save();
-                        ctx.translate(sunX, sunY);
-                        let angle = Math.atan2(originalSunY - sunY, originalSunX - sunX);
-                        if (angle < 0) angle += 2 * Math.PI;
-                        ctx.rotate(angle);
-                        ctx.beginPath();
-                        ctx.moveTo(-10, -10);
-                        ctx.lineTo(10, 0);
-                        ctx.lineTo(-10, 10);
-                        ctx.closePath();
-                        ctx.fillStyle = 'rgba(255, 200, 0, 1)';
-                        ctx.fill();
-                        ctx.restore();
-                    }
-                    // Draw glowing sun icon
-                    ctx.save();
-                    ctx.fillStyle = 'rgba(255, 200, 0, 1)';
-                    ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
-                    ctx.shadowBlur = 15;
-                    ctx.beginPath();
-                    ctx.arc(sunX, sunY, isSunVisible ? 15 : 10, 0, 2 * Math.PI);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-                    ctx.font = "bold 16px sans-serif";
-                    ctx.fillStyle = "white";
-                    ctx.textAlign = "center";
-                    ctx.fillText("☀️ Sun", sunX, sunY - (isSunVisible ? 20 : 15));
-                    ctx.restore();
-                    
-                    // Draw device orientation indicator
-                    ctx.save();
-                    ctx.translate(canvasElement.width / 2, canvasElement.height / 2);
-                    ctx.rotate(-heading * rad);
-                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.7)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(0, 0);
-                    ctx.lineTo(50, 0);
-                    ctx.stroke();
-                    ctx.restore();
-                }
-                animationFrameId = requestAnimationFrame(drawArOverlay);
-            };
-            
-            const startArLoop = () => {
-                if (animationFrameId) {
-                    cancelAnimationFrame(animationFrameId);
-                }
-                calculateSunPath();
-                if (sunPathPoints.length > 0) {
-                    drawArOverlay();
-                } else {
-                    showMessage("Sun path could not be calculated. This may be due to nighttime or an error with your location data.");
-                }
-            };
-            
-            // Calibration functions
-            const startCalibration = () => {
-                isCalibrating = true;
-                calibrationStartHeading = heading;
-                calibrationMode.style.display = 'block';
-                log('[Calibration] Starting calibration...');
-            };
-            
-            const confirmCalibration = () => {
-                // Calculate offset based on current heading
-                calibrationOffset = (360 - heading) % 360;
-                isCalibrating = false;
-                calibrationMode.style.display = 'none';
-                log(`[Calibration] Calibration complete. Offset set to ${calibrationOffset.toFixed(1)}°`);
-                showMessage(`Calibration complete! Offset set to ${calibrationOffset.toFixed(1)}°`);
-            };
-            
-            const cancelCalibration = () => {
-                isCalibrating = false;
-                calibrationMode.style.display = 'none';
-                log('[Calibration] Calibration cancelled');
-            };
-            
-            // Reset orientation
-            const resetOrientation = () => {
-                calibrationOffset = 0;
-                log('[Orientation] Reset to default');
-                showMessage("Orientation reset to default");
-            };
-            
-            // Simulate motion for debugging
-            const simulateMotion = () => {
-                log('[Simulation] Starting motion simulation...');
-                heading = (heading + 10) % 360;
-                pitch = Math.min(90, pitch + 5);
-                deviceMotionStatus.textContent = 'simulated';
-                deviceMotionStatus.style.color = '#ffcc00';
-                headingValue.textContent = `${heading.toFixed(1)}°`;
-                pitchValue.textContent = `${pitch.toFixed(1)}°`;
-                updateOrientationIndicator();
-            };
-            
-            // Debug panel toggle
-            toggleDebugBtn.addEventListener('click', () => {
-                const isHidden = debugBox.style.display === 'none';
-                debugBox.style.display = isHidden ? 'block' : 'none';
-                debugArrow.textContent = isHidden ? '▼' : '▲';
-            });
-            
-            // Event listeners for debug controls
-            toggleCalibrationBtn.addEventListener('click', startCalibration);
-            resetOrientationBtn.addEventListener('click', resetOrientation);
-            simulateMotionBtn.addEventListener('click', simulateMotion);
-            confirmCalibrationBtn.addEventListener('click', confirmCalibration);
-            cancelCalibrationBtn.addEventListener('click', cancelCalibration);
-            
-            // Start app
-            window.ctx = canvasElement.getContext('2d');
-            const startApp = () => {
-                log('[App] Starting...');
-                requestCamera();
-            };
-            startApp();
-        };
-    </script>
+    // —— Copy Logs ——
+    document.getElementById('btnCopy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(logEl.textContent);
+        log('📋 Logs copied');
+      } catch (e) {
+        log('❌ Copy failed', e);
+      }
+    };
+  </script>
 </body>
 </html>
