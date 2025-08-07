@@ -141,6 +141,7 @@
             // ---- UI and Permission Flow ----
 
             function updateUI(step) {
+                log(`[updateUI] Changing step to: ${step}`);
                 if (step === 'location') {
                     mainUI.classList.remove('hidden');
                     videoContainer.classList.add('hidden');
@@ -229,8 +230,11 @@
                 log('[click] requesting gyroscope…');
                 if (window.DeviceOrientationEvent) {
                     const handleOrientation = (event) => {
-                        heading = event.alpha;
-                        pitch = event.beta;
+                        // We only care about alpha and beta for now
+                        if (event.alpha !== null && event.beta !== null) {
+                            heading = event.alpha;
+                            pitch = event.beta;
+                        }
                     };
 
                     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -250,10 +254,18 @@
                                 showMessage("There was an error requesting device motion. Please try again.");
                             });
                     } else {
-                        // Non-iOS browsers, permission is not needed
+                        // Non-iOS browsers, permission is not needed, but check for support
                         window.addEventListener('deviceorientation', handleOrientation);
-                        log('✅ success gyroscope (no permission prompt needed)');
-                        updateUI('ar');
+                        // Add a timeout to check if the event listener is actually firing.
+                        setTimeout(() => {
+                            if (heading === 0 && pitch === 0) {
+                                log('❌ error gyroscope: Device motion not detected, sensor might not be supported or active.');
+                                showMessage("Your device does not seem to be sending motion data. This feature might not be supported.");
+                            } else {
+                                log('✅ success gyroscope (no permission prompt needed)');
+                                updateUI('ar');
+                            }
+                        }, 2000); // Wait 2 seconds to check if data is coming in
                     }
                 } else {
                     log('❌ error gyroscope: Not supported');
