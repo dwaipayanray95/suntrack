@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>AR Debug Full</title>
+  <title>SunTrack AR</title>
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -14,44 +14,40 @@
       background: #000; color: #fff;
       font-family: system-ui, sans-serif;
     }
-    video {
+    video#vid {
       position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%; object-fit: cover;
-      z-index: 0;
+      width: 100%; height: 100%;
+      object-fit: cover; z-index: 0;
     }
     canvas#cv {
       position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%; object-fit: cover;
-      z-index: 1;
+      width: 100%; height: 100%;
+      object-fit: cover; z-index: 1;
     }
-    #debug {
+    pre#debug {
       position: fixed; top: env(safe-area-inset-top); left: 0; right: 0;
-      height: 140px; background: rgba(0,0,0,0.8);
+      height: 140px; margin: 0;
+      background: rgba(0,0,0,0.8);
       color: #0f8; font-family: monospace; font-size: 12px;
       padding: 6px; overflow-y: auto; z-index: 3;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
-      margin: 0;
     }
     #controls {
       position: fixed; bottom: env(safe-area-inset-bottom); left: 0; right: 0;
       display: flex; gap: 6px; padding: 8px;
       background: rgba(0,0,0,0.7); z-index: 3;
     }
-    button {
+    #controls button {
       flex: 1; padding: 10px; font-size: 14px;
       background: #222; color: #fff; border: none; border-radius: 4px;
       cursor: pointer;
     }
-    button:disabled { opacity: 0.4; }
+    #controls button:disabled { opacity: 0.4; }
   </style>
 </head>
 <body>
-
   <video id="vid" playsinline autoplay muted></video>
   <canvas id="cv"></canvas>
-
   <pre id="debug">[ready]\n</pre>
-
   <div id="controls">
     <button id="btnCam">Start Camera</button>
     <button id="btnGeo" disabled>Get Location</button>
@@ -61,30 +57,32 @@
   </div>
 
   <script>
+    // DOM refs & state
     const vid   = document.getElementById('vid');
     const cv    = document.getElementById('cv');
     const logEl = document.getElementById('debug');
     let stream, lat, lng, heading, pitch;
     let sunPath = [], ctx2d;
 
+    // Logging
     function log(...args) {
       logEl.textContent += args.join(' ') + '\n';
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    // Sun math
+    // Sun position math
     const rad = Math.PI/180, toDeg = 180/Math.PI;
-    function toDays(date) { return date.getTime()/86400000 - .5 + 2440588 - 2451545; }
-    function getSunPosition(date, lat, lng) {
-      const lw=rad*-lng, phi=rad*lat, d=toDays(date);
-      const M=rad*(357.5291 + .98560028*d);
+    function toDays(d) { return d.getTime()/86400000 - .5 + 2440588 - 2451545; }
+    function getSunPosition(d, lat, lng) {
+      const lw=rad*-lng, phi=rad*lat, J=toDays(d);
+      const M=rad*(357.5291 + .98560028*J);
       const C=rad*(1.9148*Math.sin(M)+.02*Math.sin(2*M)+.0003*Math.sin(3*M));
       const L=M+C+rad*280.4665;
       const dec=Math.asin(Math.sin(rad*23.44)*Math.sin(L));
       const ra=Math.atan2(Math.cos(rad*23.44)*Math.sin(L), Math.cos(L));
-      const J=date.getTime()/86400000+2440587.5;
-      const gst=(J-2451545.0)*.985647362+280.460618;
-      const ha=rad*(gst+lng)-ra;
+      const D=d.getTime()/86400000 + 2440587.5;
+      const gst=(D-2451545.0)*.985647362 + 280.460618;
+      const ha=rad*(gst + lng) - ra;
       const alt=Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(ha));
       const az=Math.atan2(Math.sin(ha),
                Math.cos(ha)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi));
@@ -94,11 +92,15 @@
     // 1) Camera
     document.getElementById('btnCam').onclick = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'environment'}, audio:false });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ facingMode:'environment' }, audio:false
+        });
         vid.srcObject = stream;
         log('✅ Camera OK');
         document.getElementById('btnGeo').disabled = false;
-      } catch (e) { log('❌ Camera ERR', e.name, e.message); }
+      } catch (e) {
+        log('❌ Camera ERR', e.name, e.message);
+      }
     };
 
     // 2) Geolocation
@@ -108,14 +110,16 @@
         lat=pos.coords.latitude; lng=pos.coords.longitude;
         log('✅ Geo OK', lat.toFixed(6), lng.toFixed(6));
         document.getElementById('btnGyro').disabled = false;
-      }, err => { log('❌ Geo ERR', err.code, err.message); },
-      { enableHighAccuracy:true, timeout:10000 });
+      }, err => {
+        log('❌ Geo ERR', err.code, err.message);
+      }, { enableHighAccuracy:true, timeout:10000 });
     };
 
-    // 3) Motion
+    // 3) Device motion
     function handleOri(e) {
-      heading = e.webkitCompassHeading!=null?e.webkitCompassHeading:360 - e.alpha;
-      pitch   = e.beta;
+      heading = e.webkitCompassHeading != null
+        ? e.webkitCompassHeading : 360 - e.alpha;
+      pitch = e.beta;
       log('↻ Motion', heading.toFixed(1)+'°', pitch.toFixed(1)+'°');
     }
     document.getElementById('btnGyro').onclick = () => {
@@ -123,23 +127,25 @@
         DeviceOrientationEvent.requestPermission().then(state => {
           if (state==='granted') {
             window.addEventListener('deviceorientation', handleOri);
-            log('✅ Gyro OK'); document.getElementById('btnAR').disabled = false;
+            log('✅ Gyro OK');
+            document.getElementById('btnAR').disabled = false;
           } else log('❌ Gyro DENIED');
-        }).catch(err=>log('❌ Gyro ERR', err));
+        }).catch(err => log('❌ Gyro ERR', err));
       } else {
         window.addEventListener('deviceorientation', handleOri);
-        log('✅ Gyro OK (no prompt)'); document.getElementById('btnAR').disabled = false;
+        log('✅ Gyro OK (no prompt)');
+        document.getElementById('btnAR').disabled = false;
       }
     };
 
     // Compute sun path
     function calculateSunPath() {
       sunPath = [];
-      const now = new Date();
-      for (let i=0; i<96; i++) {
-        const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const now=new Date();
+      for (let i=0;i<96;i++) {
+        const t=new Date(now.getFullYear(),now.getMonth(),now.getDate());
         t.setMinutes(i*15);
-        sunPath.push(getSunPosition(t, lat, lng));
+        sunPath.push(getSunPosition(t,lat,lng));
       }
       log(`🎯 Sun path: ${sunPath.length} points`);
     }
@@ -147,42 +153,35 @@
     // Draw AR overlay
     function drawAR() {
       ctx2d.clearRect(0,0,cv.width,cv.height);
-      // Test overlay: crosshair
-      ctx2d.strokeStyle = 'red'; ctx2d.lineWidth = 4;
-      ctx2d.beginPath();
-      ctx2d.moveTo(0, cv.height/2); ctx2d.lineTo(cv.width, cv.height/2);
-      ctx2d.moveTo(cv.width/2, 0);   ctx2d.lineTo(cv.width/2, cv.height);
-      ctx2d.stroke();
-
-      const halfH = 30, halfV = 22.5;
-      // Horizon
-      const y0 = ((-0 - pitch + halfV)/(halfV*2))*cv.height;
+      const hFOV=60, vFOV=50;
+      // horizon at altitude 0
+      const relH=0 - pitch;
+      const y0 = (0.5 - relH/vFOV)*cv.height;
       ctx2d.strokeStyle='white'; ctx2d.lineWidth=2;
       ctx2d.beginPath(); ctx2d.moveTo(0,y0); ctx2d.lineTo(cv.width,y0); ctx2d.stroke();
 
-      // Sun path
+      // sun path arc
       ctx2d.strokeStyle='yellow'; ctx2d.lineWidth=2; ctx2d.beginPath();
       sunPath.forEach((pt,i)=>{
-        let relAz = pt.azimuth - heading; if(relAz>180)relAz-=360; if(relAz<-180)relAz+=360;
-        let relAlt=pt.altitude - pitch;
-        if(Math.abs(relAz)<=halfH*2 && Math.abs(relAlt)<=halfV*2){
-          const x = ((relAz+halfH)/(halfH*2))*cv.width;
-          const y = ((-relAlt+halfV)/(halfV*2))*cv.height;
-          i===0?ctx2d.moveTo(x,y):ctx2d.lineTo(x,y);
-        }
+        let rAz=pt.azimuth-heading; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
+        let rAlt=pt.altitude-pitch;
+        // screen coords
+        const x=(0.5 + rAz/hFOV)*cv.width;
+        const y=(0.5 - rAlt/vFOV)*cv.height;
+        i===0?ctx2d.moveTo(x,y):ctx2d.lineTo(x,y);
       });
       ctx2d.stroke();
 
-      // Sun icon
-      const nowPos = getSunPosition(new Date(), lat, lng);
-      let rAz = nowPos.azimuth - heading; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
-      let rAlt = nowPos.altitude - pitch;
-      const sunX = ((rAz+halfH)/(halfH*2))*cv.width;
-      const sunY = ((-rAlt+halfV)/(halfV*2))*cv.height;
+      // current sun
+      const nowPos=getSunPosition(new Date(),lat,lng);
+      let rAz=nowPos.azimuth-heading; if(rAz>180)rAz-=360; if(rAz<-180)rAz+=360;
+      let rAlt=nowPos.altitude-pitch;
+      const sunX=(0.5 + rAz/hFOV)*cv.width;
+      const sunY=(0.5 - rAlt/vFOV)*cv.height;
       ctx2d.fillStyle='orange';
       ctx2d.beginPath(); ctx2d.arc(sunX,sunY,12,0,2*Math.PI); ctx2d.fill();
       ctx2d.fillStyle='white'; ctx2d.textAlign='center';
-      ctx2d.fillText('☀️', sunX, sunY+4);
+      ctx2d.fillText('☀️',sunX,sunY+4);
 
       requestAnimationFrame(drawAR);
     }
@@ -192,20 +191,20 @@
       const ok = !!stream && lat!=null && heading!=null;
       log(ok ? '🎉 All set — starting AR!' : '❌ Missing prerequisites');
       if (!ok) return;
-      // size canvas
-      cv.width  = vid.videoWidth  || window.innerWidth;
-      cv.height = vid.videoHeight || window.innerHeight;
+      // size canvas to viewport
+      cv.width  = window.innerWidth;
+      cv.height = window.innerHeight;
       ctx2d = cv.getContext('2d');
       calculateSunPath();
       drawAR();
     };
 
-    // Copy Logs
+    // Copy logs
     document.getElementById('btnCopy').onclick = async () => {
       try {
         await navigator.clipboard.writeText(logEl.textContent);
         log('📋 Logs copied');
-      } catch (e) {
+      } catch(e) {
         log('❌ Copy failed', e);
       }
     };
