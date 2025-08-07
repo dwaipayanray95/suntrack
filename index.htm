@@ -3,447 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SUNTRACK</title>
-    <!-- Tailwind CSS for styling -->
+    <title>Geolocation Debug App</title>
+    <!-- Use Tailwind CSS for easy and responsive styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts for Poppins -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&display=swap" rel="stylesheet">
-    <!-- Custom styling for a minimal look -->
     <style>
+        /* Custom styles for a cleaner look */
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #ffffff;
-            color: #1a1a2e;
         }
-        #app-name {
-            font-family: 'Poppins', sans-serif;
+        .debug-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            max-height: 40vh;
+            width: 100%;
+            overflow: auto;
+            background-color: #111;
+            color: #8cf;
+            padding: 1rem;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            z-index: 9999;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
         }
     </style>
 </head>
-<body class="flex items-center justify-center h-screen overflow-hidden">
-
-    <div id="app-container" class="relative w-full h-full bg-white rounded-3xl p-6 flex flex-col items-center justify-center text-center space-y-4 md:space-y-6">
-
-        <h1 id="app-name" class="text-3xl md:text-5xl font-bold text-gray-800">
-            SUNTRACK
-        </h1>
-        <p class="text-sm md:text-base text-gray-600">Follow the arrow to find the sun!</p>
-
-        <!-- Video and Canvas for the AR effect -->
-        <div id="video-container" class="relative w-full h-full rounded-2xl overflow-hidden bg-black border-4 border-gray-300">
-            <video id="videoElement" playsinline autoplay muted class="absolute top-0 left-0 w-full h-full object-contain"></video>
-            <canvas id="canvasElement" class="absolute top-0 left-0 w-full h-full"></canvas>
-            
-            <!-- This is the container for the permission buttons and messages -->
-            <div id="permission-ui" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 bg-opacity-90 text-gray-700 font-semibold transition-opacity duration-300">
-                
-                <!-- Initial start button -->
-                <button id="start-button" class="bg-blue-600 text-white py-3 px-6 rounded-full shadow-lg text-lg md:text-xl hover:bg-blue-700 transition-colors cursor-pointer">
-                    Start SUNTRACK
-                </button>
-                
-                <!-- GPS permission button (hidden by default) -->
-                <div id="gps-prompt" class="hidden flex flex-col items-center space-y-4">
-                    <p class="text-lg md:text-xl mb-4">Please enable location services.</p>
-                    <button id="request-gps" class="bg-blue-600 text-white py-3 px-6 rounded-full shadow-lg text-lg md:text-xl hover:bg-blue-700 transition-colors">
-                        Request GPS Permission
-                    </button>
-                    <button id="show-instructions" class="text-sm text-blue-600 hover:underline">
-                        Why isn't it working?
-                    </button>
-                </div>
-                
-                <!-- Camera permission button (hidden by default) -->
-                <div id="camera-prompt" class="hidden flex flex-col items-center">
-                    <p class="text-lg md:text-xl mb-4">Allow camera access to see the world!</p>
-                    <button id="request-camera" class="bg-blue-600 text-white py-3 px-6 rounded-full shadow-lg text-lg md:text-xl hover:bg-blue-700 transition-colors">
-                        Request Camera Permission
-                    </button>
-                </div>
-
-                <!-- Gyro permission button (hidden by default) -->
-                <div id="gyro-prompt" class="hidden flex flex-col items-center">
-                    <p class="text-lg md:text-xl mb-4">Enable device motion for AR tracking.</p>
-                    <button id="request-gyro" class="bg-blue-600 text-white py-3 px-6 rounded-full shadow-lg text-lg md:text-xl hover:bg-blue-700 transition-colors">
-                        Request Gyroscope Permission
-                    </button>
-                </div>
-
-                <!-- Loading/Status message -->
-                <p id="loading-message" class="text-sm md:text-base mt-4 text-gray-600 hidden">Waiting for permission...</p>
-            </div>
-        </div>
-
-        <!-- Status messages -->
-        <div id="status-container" class="w-full text-left text-sm md:text-base space-y-1">
-            <p id="camera-status" class="text-red-600">Camera: Denied</p>
-            <p id="gps-status" class="text-red-600">GPS: Denied</p>
-            <p id="gyro-status" class="text-red-600">Gyro: Denied</p>
-        </div>
-
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+    <div class="bg-gray-800 p-8 rounded-xl shadow-lg text-center max-w-sm w-full">
+        <h1 class="text-3xl font-bold mb-4">Find My Location</h1>
+        <p class="text-gray-400 mb-6">
+            Click the button below to request your geolocation. The debug log will show the request status.
+        </p>
+        <button id="btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
+            Get Geolocation
+        </button>
     </div>
 
-    <!-- Error/Info Message Box -->
-    <div id="messageBox" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full text-center">
-            <p id="messageText" class="text-gray-800 text-lg"></p>
-            <button id="closeMessage" class="mt-4 bg-gray-800 text-white py-2 px-4 rounded-full hover:bg-gray-700 transition-colors">Close</button>
-        </div>
-    </div>
-    
-    <!-- Manual Instructions Modal -->
-    <div id="instructionsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
-            <h3 class="text-xl font-bold mb-4">How to Enable Location Services</h3>
-            <p class="mb-4">It seems that location access is currently denied for this website. You'll need to manually enable it in your browser settings. Here's a general guide:</p>
-            <ul class="list-disc list-inside space-y-2 text-left">
-                <li><strong>Chrome/Firefox:</strong> Look for a lock icon 🔒 or a location pin icon 📍 in the address bar. Click it and grant permission for this site. If that doesn't work, go to Settings -> Privacy & Security -> Site Settings -> Location. Find this website and set it to "Allow".</li>
-                <li><strong>Safari (iOS):</strong> Go to your iPhone's main Settings app, scroll down to "Safari," tap on it, then go to "Settings for Websites" -> "Location" and ensure it's set to "Allow" for this website.</li>
-            </ul>
-            <p class="mt-4 text-sm text-gray-600">For more detailed instructions, you can refer to your browser's help page.</p>
-            <button id="closeInstructions" class="mt-4 bg-gray-800 text-white py-2 px-4 rounded-full hover:bg-gray-700 transition-colors">Got it</button>
-        </div>
-    </div>
-
-
-    <!-- SunCalc library for sun position calculation -->
-    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
-
+    <!-- The provided debug script is added here, at the end of the body -->
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Get DOM elements
-            const videoElement = document.getElementById('videoElement');
-            const canvasElement = document.getElementById('canvasElement');
-            const permissionUI = document.getElementById('permission-ui');
-            const startButton = document.getElementById('start-button');
-            const gpsPrompt = document.getElementById('gps-prompt');
-            const requestGpsButton = document.getElementById('request-gps');
-            const showInstructionsButton = document.getElementById('show-instructions');
-            const instructionsModal = document.getElementById('instructionsModal');
-            const closeInstructionsButton = document.getElementById('closeInstructions');
-            const cameraPrompt = document.getElementById('camera-prompt');
-            const requestCameraButton = document.getElementById('request-camera');
-            const gyroPrompt = document.getElementById('gyro-prompt');
-            const requestGyroButton = document.getElementById('request-gyro');
-            const loadingMessage = document.getElementById('loading-message');
-            const cameraStatus = document.getElementById('camera-status');
-            const gpsStatus = document.getElementById('gps-status');
-            const gyroStatus = document.getElementById('gyro-status');
-            const messageBox = document.getElementById('messageBox');
-            const messageText = document.getElementById('messageText');
-            const closeMessageButton = document.getElementById('closeMessage');
-            const ctx = canvasElement.getContext('2d');
-
-            // Global variables for sensor data
-            let latitude = null;
-            let longitude = null;
-            let heading = 0; // Device heading (alpha)
-            let pitch = 0; // Device tilt (beta)
-            let roll = 0; // Device roll (gamma)
-
-            // Assumed field of view for the camera in degrees (simplified)
-            const horizontalFOV = 60;
-            const verticalFOV = 45;
-
-            // ---- Permission Handling and Setup (Sequenced) ----
-
-            function showPrompt(promptId, isLoading = false) {
-                // Hide all prompts first
-                startButton.style.display = 'none';
-                gpsPrompt.style.display = 'none';
-                cameraPrompt.style.display = 'none';
-                gyroPrompt.style.display = 'none';
-                loadingMessage.style.display = 'none';
-
-                // Then show the requested one
-                if (promptId === 'start-button') {
-                    startButton.style.display = 'block';
-                } else if (promptId === 'gps-prompt') {
-                    gpsPrompt.style.display = 'flex';
-                } else if (promptId === 'camera-prompt') {
-                    cameraPrompt.style.display = 'flex';
-                } else if (promptId === 'gyro-prompt') {
-                    gyroPrompt.style.display = 'flex';
-                } else if (promptId === 'loading-message') {
-                    loadingMessage.style.display = 'block';
-                }
-
-                if (isLoading) {
-                    loadingMessage.style.display = 'block';
-                }
-            }
-
-            // Function to request camera access (Step 2)
-            async function setupCamera() {
-                showPrompt('loading-message', true);
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            facingMode: 'environment',
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 }
-                        }
-                    });
-                    videoElement.srcObject = stream;
-                    videoElement.play();
-                    videoElement.onloadedmetadata = () => {
-                        canvasElement.width = videoElement.videoWidth;
-                        canvasElement.height = videoElement.videoHeight;
-                    };
-                    cameraStatus.textContent = 'Camera: Active';
-                    cameraStatus.classList.remove('text-red-600');
-                    cameraStatus.classList.add('text-green-600');
-                    console.log("Camera access granted.");
-                    showPrompt('gyro-prompt'); // Move to the next step
-                } catch (err) {
-                    cameraStatus.textContent = 'Camera: Denied';
-                    console.error("Error accessing camera: ", err);
-                    showError("Please allow camera access to use this application.");
-                    showPrompt('camera-prompt'); // Show the button again
-                }
-            }
-
-            // Function to handle device orientation (gyroscope) (Step 3)
-            function setupGyro() {
-                showPrompt('loading-message', true);
-                if (window.DeviceOrientationEvent) {
-                    const handleOrientation = (event) => {
-                        heading = event.alpha;
-                        pitch = event.beta;
-                        roll = event.gamma;
-                    };
-
-                    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                        DeviceOrientationEvent.requestPermission()
-                            .then(permissionState => {
-                                if (permissionState === 'granted') {
-                                    window.addEventListener('deviceorientation', handleOrientation);
-                                    gyroStatus.textContent = 'Gyro: Active';
-                                    gyroStatus.classList.remove('text-red-600');
-                                    gyroStatus.classList.add('text-green-600');
-                                    console.log("Gyroscope access granted.");
-                                    // All permissions are granted, start the main loop
-                                    startArLoop();
-                                } else {
-                                    gyroStatus.textContent = 'Gyro: Denied';
-                                    console.error("Permission for gyroscope denied.");
-                                    showPrompt('gyro-prompt');
-                                }
-                            })
-                            .catch(console.error);
-                    } else {
-                        // Non-iOS browsers
-                        window.addEventListener('deviceorientation', handleOrientation);
-                        gyroStatus.textContent = 'Gyro: Active';
-                        gyroStatus.classList.remove('text-red-600');
-                        gyroStatus.classList.add('text-green-600');
-                        console.log("Gyroscope access granted (no permission prompt needed).");
-                        startArLoop();
-                    }
-                } else {
-                    gyroStatus.textContent = 'Gyro: Not Supported';
-                    console.error("Device orientation not supported.");
-                    showError("Your device does not support the necessary motion sensors for this application.");
-                }
-            }
-
-            // Function to request GPS access (Step 1)
-            async function setupGPS() {
-                showPrompt('loading-message', true);
-                if (navigator.geolocation && navigator.permissions) {
-                    try {
-                        const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-
-                        if (permissionStatus.state === 'granted') {
-                            // Permission already granted, proceed directly
-                            getLocationAndProceed();
-                        } else if (permissionStatus.state === 'prompt') {
-                            // Permission needs to be requested
-                            getLocationAndProceed();
-                        } else if (permissionStatus.state === 'denied') {
-                            // Permission is denied, inform the user to manually enable it
-                            gpsStatus.textContent = 'GPS: Denied';
-                            console.error("Geolocation permission is denied. User must enable it in browser settings.");
-                            showPrompt('gps-prompt');
-                            // Open the instructions modal to guide the user
-                            instructionsModal.style.display = 'flex';
-                        }
-                    } catch (error) {
-                        // Handle errors during the permission query itself
-                        gpsStatus.textContent = 'GPS: Error';
-                        console.error("Error querying geolocation permissions: ", error);
-                        showError("There was an error checking GPS permissions. Please try again.");
-                        showPrompt('gps-prompt');
-                    }
-                } else {
-                    gpsStatus.textContent = 'GPS: Not Supported';
-                    console.error("Geolocation or Permissions API is not supported by this browser.");
-                    showError("Your device does not support GPS.");
-                }
-            }
-
-            function getLocationAndProceed() {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        latitude = position.coords.latitude;
-                        longitude = position.coords.longitude;
-                        gpsStatus.textContent = 'GPS: Active';
-                        gpsStatus.classList.remove('text-red-600');
-                        gpsStatus.classList.add('text-green-600');
-                        console.log("GPS access granted.");
-                        showPrompt('camera-prompt'); // Move to the next step
-                    },
-                    (error) => {
-                        gpsStatus.textContent = 'GPS: Denied';
-                        console.error(`Error accessing GPS. Code: ${error.code}, Message: ${error.message}`);
-                        let errorMessage = "GPS access denied. Please enable location services in your device settings.";
-                        if (error.code === error.PERMISSION_DENIED) {
-                            errorMessage = "Location permission was denied. Please allow GPS access to use this application.";
-                        } else if (error.code === error.POSITION_UNAVAILABLE) {
-                            errorMessage = "Your location could not be determined. Please try again.";
-                        }
-                        showError(errorMessage);
-                        showPrompt('gps-prompt'); // Show the button again
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 0
-                    }
-                );
-            }
-
-            // Main function to start the permission sequence after user interaction
-            function startPermissionSequence() {
-                showPrompt('gps-prompt'); // Start with the first permission prompt
-            }
-
-            // ---- Main AR Loop ----
-
-            function startArLoop() {
-                permissionUI.style.opacity = '0'; // Hide the permission UI smoothly
-                setTimeout(() => {
-                    permissionUI.style.display = 'none'; // Completely remove it from the layout
-                }, 300);
-
-                function draw() {
-                    ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-
-                    if (latitude !== null && longitude !== null && heading !== null) {
-                        const now = new Date();
-                        const sunPosition = SunCalc.getSunPosition(now, latitude, longitude);
-
-                        const sunAzimuthDeg = (sunPosition.azimuth * 180 / Math.PI + 360) % 360;
-                        const sunAltitudeDeg = sunPosition.altitude * 180 / Math.PI;
-
-                        let relativeAzimuth = sunAzimuthDeg - heading;
-                        if (relativeAzimuth > 180) relativeAzimuth -= 360;
-                        if (relativeAzimuth < -180) relativeAzimuth += 360;
-
-                        let relativeAltitude = sunAltitudeDeg - (-pitch);
-
-                        if (Math.abs(relativeAzimuth) < horizontalFOV / 2 && Math.abs(relativeAltitude) < verticalFOV / 2) {
-                            const x = (relativeAzimuth + horizontalFOV / 2) / horizontalFOV * canvasElement.width;
-                            const y = (-relativeAltitude + verticalFOV / 2) / verticalFOV * canvasElement.height;
-                            drawSunFlare(x, y);
-                        } else {
-                            drawGuidingArrow(relativeAzimuth, relativeAltitude);
-                        }
-                    }
-
-                    requestAnimationFrame(draw);
-                }
-                requestAnimationFrame(draw);
-            }
-
-            // ---- Drawing Functions ----
-            function drawSunFlare(x, y) {
-                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 100);
-                gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
-                gradient.addColorStop(0.3, 'rgba(255, 200, 50, 0.5)');
-                gradient.addColorStop(0.8, 'rgba(255, 100, 0, 0.2)');
-                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(x, y, 100, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-                ctx.beginPath();
-                ctx.arc(x, y, 10, 0, 2 * Math.PI);
-                ctx.fill();
-            }
-
-            function drawGuidingArrow(relativeAzimuth, relativeAltitude) {
-                const canvasWidth = canvasElement.width;
-                const canvasHeight = canvasElement.height;
-                const arrowSize = 40;
-                const arrowPadding = 20;
-                let x, y, rotation;
-                const halfFOV_H = horizontalFOV / 2;
-                const halfFOV_V = verticalFOV / 2;
-
-                if (Math.abs(relativeAzimuth) >= halfFOV_H) {
-                    if (relativeAzimuth > 0) {
-                        x = canvasWidth - arrowPadding;
-                        rotation = Math.PI / 2;
-                    } else {
-                        x = arrowPadding;
-                        rotation = -Math.PI / 2;
-                    }
-                    y = ((relativeAltitude + halfFOV_V) / (halfFOV_V * 2)) * canvasHeight;
-                    y = Math.min(Math.max(y, arrowPadding), canvasHeight - arrowPadding);
-                } else {
-                    if (relativeAltitude > 0) {
-                        y = arrowPadding;
-                        rotation = Math.PI;
-                    } else {
-                        y = canvasHeight - arrowPadding;
-                        rotation = 0;
-                    }
-                    x = ((relativeAzimuth + halfFOV_H) / (halfFOV_H * 2)) * canvasWidth;
-                    x = Math.min(Math.max(x, arrowPadding), canvasWidth - arrowPadding);
-                }
-
-                ctx.save();
-                ctx.translate(x, y);
-                ctx.rotate(rotation);
-                ctx.fillStyle = 'rgba(255, 200, 0, 0.9)';
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
-                ctx.beginPath();
-                ctx.moveTo(0, -arrowSize / 2);
-                ctx.lineTo(arrowSize, 0);
-                ctx.lineTo(0, arrowSize / 2);
-                ctx.lineTo(0, 0);
-                ctx.closePath();
-                ctx.fill();
-                ctx.restore();
-            }
-
-            // ---- Helper Functions ----
-            function showError(message) {
-                messageText.textContent = message;
-                messageBox.style.display = 'flex';
-                closeMessageButton.onclick = () => {
-                    messageBox.style.display = 'none';
-                };
-            }
-
-            // ---- Event Listeners ----
-            startButton.addEventListener('click', startPermissionSequence);
-            requestGpsButton.addEventListener('click', setupGPS);
-            requestCameraButton.addEventListener('click', setupCamera);
-            requestGyroButton.addEventListener('click', setupGyro);
-
-            showInstructionsButton.addEventListener('click', () => {
-                instructionsModal.style.display = 'flex';
+        (() => {
+            // Create the debug box element
+            const box = Object.assign(document.createElement('pre'), {
+                style: `
+                    position: fixed;
+                    bottom: 0;
+                    left: 0;
+                    max-height: 40vh;
+                    width: 100%;
+                    overflow: auto;
+                    background: #111;
+                    color: #8cf;
+                    padding: 6px;
+                    font-size: 11px;
+                    white-space: pre-wrap;
+                    z-index: 9999;
+                    border-top-left-radius: 10px;
+                    border-top-right-radius: 10px;
+                `,
+                textContent: '[debug]\n'
             });
-            closeInstructionsButton.addEventListener('click', () => {
-                instructionsModal.style.display = 'none';
-            });
-        });
+            document.body.appendChild(box);
+            const log = (...a) => box.textContent += a.join(' ') + '\n';
+
+            // 1️⃣ Show origin + HTTPS check
+            log('location.origin =', location.origin);
+            log('isSecureContext =', isSecureContext);
+
+            // 2️⃣ Show stored permission state (if supported)
+            if ('permissions' in navigator) {
+                navigator.permissions.query({ name: 'geolocation' })
+                    .then(p => log('permissions.state =', p.state))
+                    .catch(() => {});
+            }
+
+            // 3️⃣ Hook your existing button
+            const btn = document.getElementById('btn');
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    log('[click] requesting geolocation…');
+                    navigator.geolocation.getCurrentPosition(
+                        pos => log('✅ success', pos.coords),
+                        err => log('❌ error code', err.code, err.message),
+                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    );
+                });
+            } else {
+                log('⚠️ No #btn element found');
+            }
+        })();
     </script>
 </body>
 </html>
