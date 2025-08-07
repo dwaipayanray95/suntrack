@@ -126,9 +126,10 @@
 
             // Function to request GPS access
             function setupGPS() {
-                // Ensure the GPS status button is clickable and styled correctly
+                // Change the text to show it's trying
                 gpsStatus.textContent = 'GPS: Requesting...';
-                gpsStatus.classList.remove('text-red-600');
+                gpsStatus.classList.remove('text-red-600', 'underline');
+                gpsStatus.classList.add('text-yellow-600');
                 
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
@@ -137,16 +138,24 @@
                             longitude = position.coords.longitude;
                             gpsPermissionGranted = true;
                             gpsStatus.textContent = 'GPS: Active';
-                            gpsStatus.classList.remove('text-red-600');
+                            gpsStatus.classList.remove('text-red-600', 'text-yellow-600');
                             gpsStatus.classList.add('text-green-600');
                             console.log("GPS access granted.");
                             checkAllPermissions();
                         },
                         (error) => {
+                            // If denied, provide instructional text
                             gpsStatus.textContent = 'GPS: Denied - Tap to Enable';
+                            gpsStatus.classList.remove('text-green-600', 'text-yellow-600');
                             gpsStatus.classList.add('text-red-600', 'underline'); // Highlight the button to the user
                             console.error("Error accessing GPS: ", error);
                             showError("Please enable GPS for accurate sun position.");
+                        },
+                        {
+                            // Geolocation options for better results on Safari
+                            enableHighAccuracy: true,
+                            timeout: 10000, // 10 seconds
+                            maximumAge: 0 // Request a fresh position
                         }
                     );
                 } else {
