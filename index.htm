@@ -229,42 +229,68 @@
             }
 
             // Function to request GPS access (Step 1)
-            function setupGPS() {
+            async function setupGPS() {
                 showPrompt('loading-message', true);
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        (position) => {
-                            latitude = position.coords.latitude;
-                            longitude = position.coords.longitude;
-                            gpsStatus.textContent = 'GPS: Active';
-                            gpsStatus.classList.remove('text-red-600');
-                            gpsStatus.classList.add('text-green-600');
-                            console.log("GPS access granted.");
-                            showPrompt('camera-prompt'); // Move to the next step
-                        },
-                        (error) => {
+                if (navigator.geolocation && navigator.permissions) {
+                    try {
+                        const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+
+                        if (permissionStatus.state === 'granted') {
+                            // Permission already granted, proceed directly
+                            getLocationAndProceed();
+                        } else if (permissionStatus.state === 'prompt') {
+                            // Permission needs to be requested
+                            getLocationAndProceed();
+                        } else if (permissionStatus.state === 'denied') {
+                            // Permission is denied, inform the user to manually enable it
                             gpsStatus.textContent = 'GPS: Denied';
-                            console.error(`Error accessing GPS. Code: ${error.code}, Message: ${error.message}`);
-                            let errorMessage = "GPS access denied. Please enable location services in your device settings.";
-                            if (error.code === error.PERMISSION_DENIED) {
-                                errorMessage = "Location permission was denied. Please allow GPS access to use this application.";
-                            } else if (error.code === error.POSITION_UNAVAILABLE) {
-                                errorMessage = "Your location could not be determined. Please try again.";
-                            }
-                            showError(errorMessage);
-                            showPrompt('gps-prompt'); // Show the button again
-                        },
-                        {
-                            enableHighAccuracy: true,
-                            timeout: 10000,
-                            maximumAge: 0
+                            console.error("Geolocation permission is denied. User must enable it in browser settings.");
+                            showError("GPS access is currently denied in your browser settings. Please enable location services to use this app.");
+                            showPrompt('gps-prompt');
                         }
-                    );
+                    } catch (error) {
+                        // Handle errors during the permission query itself
+                        gpsStatus.textContent = 'GPS: Error';
+                        console.error("Error querying geolocation permissions: ", error);
+                        showError("There was an error checking GPS permissions. Please try again.");
+                        showPrompt('gps-prompt');
+                    }
                 } else {
                     gpsStatus.textContent = 'GPS: Not Supported';
-                    console.error("Geolocation is not supported by this browser.");
+                    console.error("Geolocation or Permissions API is not supported by this browser.");
                     showError("Your device does not support GPS.");
                 }
+            }
+
+            function getLocationAndProceed() {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        latitude = position.coords.latitude;
+                        longitude = position.coords.longitude;
+                        gpsStatus.textContent = 'GPS: Active';
+                        gpsStatus.classList.remove('text-red-600');
+                        gpsStatus.classList.add('text-green-600');
+                        console.log("GPS access granted.");
+                        showPrompt('camera-prompt'); // Move to the next step
+                    },
+                    (error) => {
+                        gpsStatus.textContent = 'GPS: Denied';
+                        console.error(`Error accessing GPS. Code: ${error.code}, Message: ${error.message}`);
+                        let errorMessage = "GPS access denied. Please enable location services in your device settings.";
+                        if (error.code === error.PERMISSION_DENIED) {
+                            errorMessage = "Location permission was denied. Please allow GPS access to use this application.";
+                        } else if (error.code === error.POSITION_UNAVAILABLE) {
+                            errorMessage = "Your location could not be determined. Please try again.";
+                        }
+                        showError(errorMessage);
+                        showPrompt('gps-prompt'); // Show the button again
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
             }
 
             // Main function to start the permission sequence after user interaction
