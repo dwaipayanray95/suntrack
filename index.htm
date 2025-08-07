@@ -311,8 +311,10 @@
             // AR overlay drawing
             const drawArOverlay = () => {
                 ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
                 const halfFOV_H = horizontalFOV / 2;
                 const halfFOV_V = verticalFOV / 2;
+
                 if (!hasDeviceMotion) {
                     ctx.fillStyle = "white";
                     ctx.textAlign = "center";
@@ -321,6 +323,7 @@
                 } else {
                     const currentHeading = heading;
                     const currentPitch = pitch;
+
                     // Draw the horizon line
                     const horizonRelativeAltitude = 0 - currentPitch;
                     const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
@@ -335,38 +338,61 @@
                     ctx.textAlign = "center";
                     ctx.font = "bold 16px sans-serif";
                     ctx.fillText("Horizon", canvasElement.width / 2, clampedHorizonY - 15);
-                    // Draw sun path
+
+                    // Draw the sun path arc for the day
                     if (sunPathPoints.length > 0) {
-                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-                        ctx.lineWidth = 2;
+                        ctx.save();
+                        ctx.beginPath();
+                        let pathStarted = false;
                         sunPathPoints.forEach((point, index) => {
+                            // Calculate relative azimuth and altitude for camera orientation
                             let relativeAzimuth = point.azimuth - currentHeading;
                             if (relativeAzimuth > 180) relativeAzimuth -= 360;
                             if (relativeAzimuth < -180) relativeAzimuth += 360;
                             const relativeAltitude = point.altitude - currentPitch;
-                            const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
-                            const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
-                            if (index === 0) {
-                                ctx.beginPath();
-                                ctx.moveTo(x, y);
-                            } else {
-                                ctx.lineTo(x, y);
-                                // Draw time labels every 3 hours
+
+                            // Only plot points within a reasonable field of view for smoothness
+                            if (Math.abs(relativeAzimuth) <= halfFOV_H * 2 && Math.abs(relativeAltitude) <= halfFOV_V * 2) {
+                                const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                                const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+
+                                if (!pathStarted) {
+                                    ctx.moveTo(x, y);
+                                    pathStarted = true;
+                                } else {
+                                    ctx.lineTo(x, y);
+                                }
+
+                                // Add hour markers every 3 hours
                                 const hour = point.time.getHours();
-                                if (hour % 3 === 0 && Math.abs(x - (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width) < 5) {
+                                if (hour % 3 === 0 && point.time.getMinutes() === 0) {
                                     ctx.save();
                                     ctx.translate(x, y);
-                                    ctx.fillStyle = "white";
-                                    ctx.textAlign = "center";
+                                    ctx.fillStyle = "yellow";
                                     ctx.font = "bold 12px sans-serif";
-                                    ctx.fillText(`${hour}h`, 0, -10);
+                                    ctx.textAlign = "center";
+                                    ctx.fillText(`${hour}:00`, 0, -18);
+                                    ctx.restore();
+
+                                    // Draw a small circle at the hour marker
+                                    ctx.save();
+                                    ctx.beginPath();
+                                    ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                                    ctx.fillStyle = "rgba(255,255,0,0.6)";
+                                    ctx.fill();
                                     ctx.restore();
                                 }
                             }
                         });
+                        ctx.strokeStyle = 'rgba(255, 255, 0, 0.88)';
+                        ctx.lineWidth = 3;
+                        ctx.shadowColor = 'rgba(255,255,0,0.28)';
+                        ctx.shadowBlur = 5;
                         ctx.stroke();
+                        ctx.restore();
                     }
-                    // Draw current sun indicator
+
+                    // Draw the current sun position
                     const now = new Date();
                     const currentSunPos = getSunPosition(now, latitude, longitude);
                     let currentRelativeAzimuth = currentSunPos.azimuth - currentHeading;
@@ -396,7 +422,8 @@
                         ctx.fill();
                         ctx.restore();
                     }
-                    // Draw a glowing sun icon
+                    // Draw glowing sun icon
+                    ctx.save();
                     ctx.fillStyle = 'rgba(255, 200, 0, 1)';
                     ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
                     ctx.shadowBlur = 15;
@@ -408,6 +435,7 @@
                     ctx.fillStyle = "white";
                     ctx.textAlign = "center";
                     ctx.fillText("☀️ Sun", sunX, sunY - (isSunVisible ? 20 : 15));
+                    ctx.restore();
                 }
                 animationFrameId = requestAnimationFrame(drawArOverlay);
             };
