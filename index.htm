@@ -45,10 +45,13 @@
                 </button>
                 
                 <!-- GPS permission button (hidden by default) -->
-                <div id="gps-prompt" class="hidden flex flex-col items-center">
+                <div id="gps-prompt" class="hidden flex flex-col items-center space-y-4">
                     <p class="text-lg md:text-xl mb-4">Please enable location services.</p>
                     <button id="request-gps" class="bg-blue-600 text-white py-3 px-6 rounded-full shadow-lg text-lg md:text-xl hover:bg-blue-700 transition-colors">
                         Request GPS Permission
+                    </button>
+                    <button id="show-instructions" class="text-sm text-blue-600 hover:underline">
+                        Why isn't it working?
                     </button>
                 </div>
                 
@@ -89,6 +92,21 @@
             <button id="closeMessage" class="mt-4 bg-gray-800 text-white py-2 px-4 rounded-full hover:bg-gray-700 transition-colors">Close</button>
         </div>
     </div>
+    
+    <!-- Manual Instructions Modal -->
+    <div id="instructionsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
+            <h3 class="text-xl font-bold mb-4">How to Enable Location Services</h3>
+            <p class="mb-4">It seems that location access is currently denied for this website. You'll need to manually enable it in your browser settings. Here's a general guide:</p>
+            <ul class="list-disc list-inside space-y-2 text-left">
+                <li><strong>Chrome/Firefox:</strong> Look for a lock icon 🔒 or a location pin icon 📍 in the address bar. Click it and grant permission for this site. If that doesn't work, go to Settings -> Privacy & Security -> Site Settings -> Location. Find this website and set it to "Allow".</li>
+                <li><strong>Safari (iOS):</strong> Go to your iPhone's main Settings app, scroll down to "Safari," tap on it, then go to "Settings for Websites" -> "Location" and ensure it's set to "Allow" for this website.</li>
+            </ul>
+            <p class="mt-4 text-sm text-gray-600">For more detailed instructions, you can refer to your browser's help page.</p>
+            <button id="closeInstructions" class="mt-4 bg-gray-800 text-white py-2 px-4 rounded-full hover:bg-gray-700 transition-colors">Got it</button>
+        </div>
+    </div>
+
 
     <!-- SunCalc library for sun position calculation -->
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
@@ -102,6 +120,9 @@
             const startButton = document.getElementById('start-button');
             const gpsPrompt = document.getElementById('gps-prompt');
             const requestGpsButton = document.getElementById('request-gps');
+            const showInstructionsButton = document.getElementById('show-instructions');
+            const instructionsModal = document.getElementById('instructionsModal');
+            const closeInstructionsButton = document.getElementById('closeInstructions');
             const cameraPrompt = document.getElementById('camera-prompt');
             const requestCameraButton = document.getElementById('request-camera');
             const gyroPrompt = document.getElementById('gyro-prompt');
@@ -245,8 +266,9 @@
                             // Permission is denied, inform the user to manually enable it
                             gpsStatus.textContent = 'GPS: Denied';
                             console.error("Geolocation permission is denied. User must enable it in browser settings.");
-                            showError("GPS access is currently denied in your browser settings. Please enable location services to use this app.");
                             showPrompt('gps-prompt');
+                            // Open the instructions modal to guide the user
+                            instructionsModal.style.display = 'flex';
                         }
                     } catch (error) {
                         // Handle errors during the permission query itself
@@ -414,6 +436,13 @@
             requestGpsButton.addEventListener('click', setupGPS);
             requestCameraButton.addEventListener('click', setupCamera);
             requestGyroButton.addEventListener('click', setupGyro);
+
+            showInstructionsButton.addEventListener('click', () => {
+                instructionsModal.style.display = 'flex';
+            });
+            closeInstructionsButton.addEventListener('click', () => {
+                instructionsModal.style.display = 'none';
+            });
         });
     </script>
 </body>
