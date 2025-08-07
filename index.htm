@@ -3,52 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>AR Debug Minimal</title>
+  <title>AR Debug with Logs</title>
   <style>
-    /* ---------------------------------------- */
-    /* Layout + Safe-Area */
-    html, body {
-      margin: 0; padding: 0;
-      width: 100%; height: 100%;
-      padding-top: env(safe-area-inset-top);
-      padding-bottom: env(safe-area-inset-bottom);
-      overflow: hidden;
-      background: #000;
-      font-family: system-ui, sans-serif;
-      color: #fff;
+    html,body {
+      margin:0;padding:0;
+      width:100%;height:100%;
+      padding-top:env(safe-area-inset-top);
+      padding-bottom:env(safe-area-inset-bottom);
+      background:#000;color:#fff;
+      font-family:system-ui,sans-serif;
+      overflow:hidden;
     }
     video, canvas {
-      position: absolute; top: 0; left: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
+      position:absolute;top:0;left:0;
+      width:100%;height:100%;object-fit:cover;
     }
-
-    /* Debug pane at top */
     #debug {
-      position: fixed; top: env(safe-area-inset-top); left: 0; right: 0;
-      height: 140px; background: rgba(0,0,0,0.8);
-      color: #0f8; font-family: monospace; font-size: 12px;
-      padding: 6px; overflow-y: auto; z-index: 1000;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      position:fixed;top:env(safe-area-inset-top);left:0;right:0;
+      height:140px; background:rgba(0,0,0,0.8);
+      color:#0f8; font-family:monospace; font-size:12px;
+      padding:6px; overflow-y:auto; z-index:1000;
+      box-shadow:0 2px 8px rgba(0,0,0,0.6);
     }
-
-    /* Controls at bottom */
     #controls {
-      position: fixed; bottom: env(safe-area-inset-bottom); left: 0; right: 0;
-      display: flex; gap: 8px; padding: 8px;
-      background: rgba(0,0,0,0.7); z-index: 1000;
+      position:fixed;bottom:env(safe-area-inset-bottom);left:0;right:0;
+      display:flex;gap:6px;padding:8px;background:rgba(0,0,0,0.7);z-index:1000;
     }
     button {
-      flex: 1; padding: 10px;
-      font-size: 14px; color: #fff;
-      background: #222; border: none; border-radius: 4px;
+      flex:1;padding:10px;font-size:14px;
+      background:#222;color:#fff;border:none;border-radius:4px;
+      cursor:pointer;
     }
-    button:disabled { opacity: 0.4; }
-    pre { margin: 0; }
+    button:disabled { opacity:.4; }
   </style>
 </head>
 <body>
-
   <video id="vid" playsinline autoplay muted></video>
   <canvas id="cv"></canvas>
 
@@ -59,77 +48,96 @@
     <button id="btnGeo" disabled>Get Location</button>
     <button id="btnGyro" disabled>Enable Motion</button>
     <button id="btnAR" disabled>Start AR</button>
+    <button id="btnCopy">Copy Logs</button>
+    <button id="btnDownload">Download Logs</button>
   </div>
 
   <script>
-  const log = (...args) => {
-    const d = document.getElementById('debug');
-    d.textContent += args.join(' ') + '\\n';
-    d.scrollTop = d.scrollHeight;
-  };
+    const logEl = document.getElementById('debug');
 
-  let stream, lat, lng, heading, pitch;
+    const log = (...args) => {
+      logEl.textContent += args.join(' ') + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    };
 
-  // 1) CAMERA
-  document.getElementById('btnCam').onclick = async () => {
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:'environment' }, audio:false
-      });
-      document.getElementById('vid').srcObject = stream;
-      log('✅ Camera OK');
-      document.getElementById('btnGeo').disabled = false;
-    } catch(e) {
-      log('❌ Camera ERR', e.name, e.message);
-    }
-  };
+    let stream,lat,lng,heading,pitch;
 
-  // 2) GEOLOCATION
-  document.getElementById('btnGeo').onclick = () => {
-    if (!navigator.geolocation) return log('❌ No geolocation API');
-    navigator.geolocation.getCurrentPosition(pos => {
-      lat = pos.coords.latitude; lng = pos.coords.longitude;
-      log('✅ Geo OK', lat.toFixed(6), lng.toFixed(6));
-      document.getElementById('btnGyro').disabled = false;
-    }, err => {
-      log('❌ Geo ERR', err.code, err.message);
-    }, { enableHighAccuracy:true, timeout:10000 });
-  };
+    // 1) CAMERA
+    document.getElementById('btnCam').onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+        document.getElementById('vid').srcObject = stream;
+        log('✅ Camera OK');
+        document.getElementById('btnGeo').disabled = false;
+      } catch(e){
+        log('❌ Camera ERR', e.name, e.message);
+      }
+    };
 
-  // 3) GYROSCOPE
-  const handleOri = e => {
-    heading = e.webkitCompassHeading != null
-      ? e.webkitCompassHeading
-      : (360 - e.alpha);
-    pitch = e.beta;
-    log('↻ Motion', heading.toFixed(1)+'°', pitch.toFixed(1)+'°');
-  };
-  document.getElementById('btnGyro').onclick = () => {
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      DeviceOrientationEvent.requestPermission()
-        .then(s => {
-          if (s === 'granted') {
+    // 2) GEO
+    document.getElementById('btnGeo').onclick = () => {
+      if(!navigator.geolocation) return log('❌ No geolocation API');
+      navigator.geolocation.getCurrentPosition(pos => {
+        lat=pos.coords.latitude; lng=pos.coords.longitude;
+        log('✅ Geo OK', lat.toFixed(6), lng.toFixed(6));
+        document.getElementById('btnGyro').disabled = false;
+      }, err => {
+        log('❌ Geo ERR', err.code, err.message);
+      }, {enableHighAccuracy:true, timeout:10000});
+    };
+
+    // 3) GYRO
+    const handleOri = e => {
+      heading = e.webkitCompassHeading!=null ? e.webkitCompassHeading : 360 - e.alpha;
+      pitch = e.beta;
+      log('↻ Motion', heading.toFixed(1)+'°', pitch.toFixed(1)+'°');
+    };
+    document.getElementById('btnGyro').onclick = () => {
+      if(typeof DeviceOrientationEvent.requestPermission==='function'){
+        DeviceOrientationEvent.requestPermission().then(s => {
+          if(s==='granted'){
             window.addEventListener('deviceorientation', handleOri);
             log('✅ Gyro OK');
             document.getElementById('btnAR').disabled = false;
           } else log('❌ Gyro DENIED');
-        })
-        .catch(e => log('❌ Gyro ERR', e));
-    } else {
-      window.addEventListener('deviceorientation', handleOri);
-      log('✅ Gyro OK (no prompt)');
-      document.getElementById('btnAR').disabled = false;
-    }
-  };
+        }).catch(e=>log('❌ Gyro ERR', e));
+      } else {
+        window.addEventListener('deviceorientation', handleOri);
+        log('✅ Gyro OK (no prompt)');
+        document.getElementById('btnAR').disabled = false;
+      }
+    };
 
-  // 4) START AR
-  document.getElementById('btnAR').onclick = () => {
-    const ok = !!stream && lat != null && heading != null;
-    log(ok
-      ? '🎉 All set! AR could start now.'
-      : `❌ Missing: cam=${!!stream}, geo=${lat!=null}, gyro=${heading!=null}`
-    );
-  };
+    // 4) AR CHECK
+    document.getElementById('btnAR').onclick = () => {
+      const ok = !!stream && lat!=null && heading!=null;
+      log(ok? '🎉 All set! AR can start.' 
+             : `❌ Missing: cam=${!!stream}, geo=${lat!=null}, gyro=${heading!=null}`);
+    };
+
+    // 5) COPY LOGS
+    document.getElementById('btnCopy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(logEl.textContent);
+        log('📋 Logs copied to clipboard');
+      } catch(e){
+        log('❌ Copy failed:', e);
+      }
+    };
+
+    // 6) DOWNLOAD LOGS
+    document.getElementById('btnDownload').onclick = () => {
+      const blob = new Blob([logEl.textContent], {type:'text/plain'});
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `debug-log_${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      log('💾 Logs downloaded');
+    };
   </script>
 </body>
 </html>
