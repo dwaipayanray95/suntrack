@@ -1,97 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geolocation Debug App</title>
-    <!-- Use Tailwind CSS for easy and responsive styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Custom styles for a cleaner look */
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        .debug-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            max-height: 40vh;
-            width: 100%;
-            overflow: auto;
-            background-color: #111;
-            color: #8cf;
-            padding: 1rem;
-            font-size: 0.75rem;
-            white-space: pre-wrap;
-            z-index: 9999;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geolocation Debug App</title>
+    <!-- Use Tailwind CSS for easy and responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a cleaner look */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .debug-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            max-height: 40vh;
+            width: 100%;
+            overflow: auto;
+            background-color: #111;
+            color: #8cf;
+            padding: 1rem;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            z-index: 9999;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+        }
+    </style>
 </head>
 <body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
-    <div class="bg-gray-800 p-8 rounded-xl shadow-lg text-center max-w-sm w-full">
-        <h1 class="text-3xl font-bold mb-4">Find My Location</h1>
-        <p class="text-gray-400 mb-6">
-            Click the button below to request your geolocation. The debug log will show the request status.
-        </p>
-        <button id="btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
-            Get Geolocation
-        </button>
-    </div>
+    <div class="bg-gray-800 p-8 rounded-xl shadow-lg text-center max-w-sm w-full">
+        <h1 class="text-3xl font-bold mb-4">Find My Location</h1>
+        <p class="text-gray-400 mb-6">
+            Click the button below to request your geolocation. The debug log will show the request status.
+        </p>
+        <button id="btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
+            Get Geolocation
+        </button>
+    </div>
 
-    <!-- The provided debug script is added here, at the end of the body -->
-    <script>
-        (() => {
-            // Create the debug box element
-            const box = Object.assign(document.createElement('pre'), {
-                style: `
-                    position: fixed;
-                    bottom: 0;
-                    left: 0;
-                    max-height: 40vh;
-                    width: 100%;
-                    overflow: auto;
-                    background: #111;
-                    color: #8cf;
-                    padding: 6px;
-                    font-size: 11px;
-                    white-space: pre-wrap;
-                    z-index: 9999;
-                    border-top-left-radius: 10px;
-                    border-top-right-radius: 10px;
-                `,
-                textContent: '[debug]\n'
-            });
-            document.body.appendChild(box);
-            const log = (...a) => box.textContent += a.join(' ') + '\n';
+    <!-- The provided debug script is added here, at the end of the body -->
+    <script>
+        (() => {
+            // Create the debug box element
+            const box = Object.assign(document.createElement('pre'), {
+                style: `
+                    position: fixed;
+                    bottom: 0;
+                    left: 0;
+                    max-height: 40vh;
+                    width: 100%;
+                    overflow: auto;
+                    background: #111;
+                    color: #8cf;
+                    padding: 6px;
+                    font-size: 11px;
+                    white-space: pre-wrap;
+                    z-index: 9999;
+                    border-top-left-radius: 10px;
+                    border-top-right-radius: 10px;
+                `,
+                textContent: '[debug]\n'
+            });
+            document.body.appendChild(box);
+            const log = (...a) => box.textContent += a.join(' ') + '\n';
 
-            // 1️⃣ Show origin + HTTPS check
-            log('location.origin =', location.origin);
-            log('isSecureContext =', isSecureContext);
+            // 1️⃣ Show origin + HTTPS check
+            log('location.origin =', location.origin);
+            log('isSecureContext =', isSecureContext);
 
-            // 2️⃣ Show stored permission state (if supported)
-            if ('permissions' in navigator) {
-                navigator.permissions.query({ name: 'geolocation' })
-                    .then(p => log('permissions.state =', p.state))
-                    .catch(() => {});
-            }
+            // 2️⃣ Show stored permission state (if supported)
+            if ('permissions' in navigator) {
+                navigator.permissions.query({ name: 'geolocation' })
+                    .then(p => log('permissions.state =', p.state))
+                    .catch(() => {});
+            }
 
-            // 3️⃣ Hook your existing button
-            const btn = document.getElementById('btn');
-            if (btn) {
-                btn.addEventListener('click', () => {
-                    log('[click] requesting geolocation…');
-                    navigator.geolocation.getCurrentPosition(
-                        pos => log('✅ success', pos.coords),
-                        err => log('❌ error code', err.code, err.message),
-                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                    );
-                });
-            } else {
-                log('⚠️ No #btn element found');
-            }
-        })();
-    </script>
+            // 3️⃣ Hook your existing button
+            const btn = document.getElementById('btn');
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    log('[click] requesting geolocation…');
+                    navigator.geolocation.getCurrentPosition(
+                        pos => log('✅ success', pos.coords),
+                        err => log('❌ error code', err.code, err.message),
+                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    );
+                });
+            } else {
+                log('⚠️ No #btn element found');
+            }
+        })();
+    </script>
 </body>
 </html>
