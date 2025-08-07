@@ -1,97 +1,294 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geolocation Debug App</title>
-    <!-- Use Tailwind CSS for easy and responsive styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Custom styles for a cleaner look */
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        .debug-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            max-height: 40vh;
-            width: 100%;
-            overflow: auto;
-            background-color: #111;
-            color: #8cf;
-            padding: 1rem;
-            font-size: 0.75rem;
-            white-space: pre-wrap;
-            z-index: 9999;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SunTrack App</title>
+    <!-- Use Tailwind CSS for easy and responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for a cleaner look */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1f2937;
+            color: #d1d5db;
+        }
+        .debug-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            max-height: 40vh;
+            width: 100%;
+            overflow: auto;
+            background-color: #111;
+            color: #8cf;
+            padding: 1rem;
+            font-size: 0.75rem;
+            white-space: pre-wrap;
+            z-index: 9999;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            display: none; /* Initially hidden */
+        }
+        #toggle-debug-btn {
+            position: fixed;
+            bottom: 40vh;
+            right: 1rem;
+            z-index: 10000;
+            background-color: #111;
+            color: #8cf;
+            padding: 8px 12px;
+            font-size: 12px;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            border: none;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: none; /* Initially hidden */
+        }
+        #videoElement, #canvasElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #canvasElement {
+            z-index: 10;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
-    <div class="bg-gray-800 p-8 rounded-xl shadow-lg text-center max-w-sm w-full">
-        <h1 class="text-3xl font-bold mb-4">Find My Location</h1>
-        <p class="text-gray-400 mb-6">
-            Click the button below to request your geolocation. The debug log will show the request status.
-        </p>
-        <button id="btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
-            Get Geolocation
-        </button>
-    </div>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <!-- Main UI for permission requests -->
+    <div id="main-ui" class="bg-gray-800 p-8 rounded-xl shadow-lg text-center max-w-sm w-full">
+        <h1 class="text-3xl font-bold mb-4">SunTrack</h1>
+        <p class="text-gray-400 mb-6" id="status-message">
+            Get your location to start.
+        </p>
+        <button id="main-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
+            Get Location
+        </button>
+    </div>
 
-    <!-- The provided debug script is added here, at the end of the body -->
-    <script>
-        (() => {
-            // Create the debug box element
-            const box = Object.assign(document.createElement('pre'), {
-                style: `
-                    position: fixed;
-                    bottom: 0;
-                    left: 0;
-                    max-height: 40vh;
-                    width: 100%;
-                    overflow: auto;
-                    background: #111;
-                    color: #8cf;
-                    padding: 6px;
-                    font-size: 11px;
-                    white-space: pre-wrap;
-                    z-index: 9999;
-                    border-top-left-radius: 10px;
-                    border-top-right-radius: 10px;
-                `,
-                textContent: '[debug]\n'
-            });
-            document.body.appendChild(box);
-            const log = (...a) => box.textContent += a.join(' ') + '\n';
+    <!-- Video and Canvas for the AR effect -->
+    <div id="video-container" class="hidden">
+        <video id="videoElement" playsinline autoplay muted></video>
+        <canvas id="canvasElement"></canvas>
+    </div>
 
-            // 1️⃣ Show origin + HTTPS check
-            log('location.origin =', location.origin);
-            log('isSecureContext =', isSecureContext);
+    <!-- Debug Toggle Button -->
+    <button id="toggle-debug-btn" class="font-mono">
+        <span id="debug-arrow">▲</span> Debug
+    </button>
+    
+    <!-- Debug Console Box -->
+    <pre id="debug-box" class="debug-container">
+        [debug]
+    </pre>
 
-            // 2️⃣ Show stored permission state (if supported)
-            if ('permissions' in navigator) {
-                navigator.permissions.query({ name: 'geolocation' })
-                    .then(p => log('permissions.state =', p.state))
-                    .catch(() => {});
-            }
+    <!-- SunCalc library for sun position calculation -->
+    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
 
-            // 3️⃣ Hook your existing button
-            const btn = document.getElementById('btn');
-            if (btn) {
-                btn.addEventListener('click', () => {
-                    log('[click] requesting geolocation…');
-                    navigator.geolocation.getCurrentPosition(
-                        pos => log('✅ success', pos.coords),
-                        err => log('❌ error code', err.code, err.message),
-                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-                    );
-                });
-            } else {
-                log('⚠️ No #btn element found');
-            }
-        })();
-    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get DOM elements
+            const mainUI = document.getElementById('main-ui');
+            const videoContainer = document.getElementById('video-container');
+            const statusMessage = document.getElementById('status-message');
+            const mainButton = document.getElementById('main-btn');
+            const videoElement = document.getElementById('videoElement');
+            const canvasElement = document.getElementById('canvasElement');
+            const ctx = canvasElement.getContext('2d');
+            const debugBox = document.getElementById('debug-box');
+            const toggleDebugBtn = document.getElementById('toggle-debug-btn');
+            const debugArrow = document.getElementById('debug-arrow');
+
+            // Global variables
+            let latitude = null;
+            let longitude = null;
+            let currentStep = 'location';
+            let sunPathPoints = [];
+
+            // Debug log function
+            const log = (...a) => {
+                debugBox.textContent += a.join(' ') + '\n';
+                debugBox.scrollTop = debugBox.scrollHeight;
+            };
+
+            // ---- Permission and UI Flow ----
+
+            function updateUI(step) {
+                currentStep = step;
+                if (step === 'location') {
+                    mainUI.classList.remove('hidden');
+                    videoContainer.classList.add('hidden');
+                    statusMessage.textContent = 'Get your location to start.';
+                    mainButton.textContent = 'Get Location';
+                } else if (step === 'camera') {
+                    mainUI.classList.remove('hidden');
+                    videoContainer.classList.add('hidden');
+                    statusMessage.textContent = 'Location found! Now, grant camera access.';
+                    mainButton.textContent = 'Get Camera Permission';
+                } else if (step === 'ar') {
+                    mainUI.classList.add('hidden');
+                    videoContainer.classList.remove('hidden');
+                }
+            }
+
+            function handleButtonClick() {
+                if (currentStep === 'location') {
+                    requestGeolocation();
+                } else if (currentStep === 'camera') {
+                    requestCamera();
+                }
+            }
+
+            // Request Geolocation permission (Step 1)
+            function requestGeolocation() {
+                log('[click] requesting geolocation…');
+                if ('permissions' in navigator) {
+                    navigator.permissions.query({ name: 'geolocation' })
+                        .then(p => log('permissions.state =', p.state))
+                        .catch(()=>{});
+                }
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        latitude = pos.coords.latitude;
+                        longitude = pos.coords.longitude;
+                        log('✅ success location', pos.coords);
+                        updateUI('camera');
+                    },
+                    (err) => {
+                        log('❌ error code', err.code, err.message);
+                        alert(`Error: ${err.message}. Please enable location services.`);
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            }
+
+            // Request Camera permission (Step 2)
+            async function requestCamera() {
+                log('[click] requesting camera…');
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'environment',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    });
+                    videoElement.srcObject = stream;
+                    videoElement.play();
+                    videoElement.onloadedmetadata = () => {
+                        canvasElement.width = videoElement.videoWidth;
+                        canvasElement.height = videoElement.videoHeight;
+                        calculateSunPath();
+                        startArLoop();
+                    };
+                    log('✅ success camera');
+                    updateUI('ar');
+                } catch (err) {
+                    log('❌ error camera:', err.name, err.message);
+                    alert(`Error: ${err.message}. Please allow camera access.`);
+                }
+            }
+
+            // ---- Sun Path Calculation and AR Loop ----
+
+            function calculateSunPath() {
+                log('[SunPath] Calculating sun path for the day...');
+                sunPathPoints = [];
+                const now = new Date();
+                const times = SunCalc.getTimes(now, latitude, longitude);
+                const sunTimes = [
+                    'sunrise', 'sunriseEnd', 'goldenHourEnd', 'solarNoon',
+                    'goldenHour', 'sunsetStart', 'sunset'
+                ];
+
+                // Calculate sun position every 30 minutes for a full day
+                for (let i = 0; i < 24 * 60; i += 30) {
+                    const time = new Date(now.getTime() + i * 60 * 1000);
+                    const pos = SunCalc.getSunPosition(time, latitude, longitude);
+                    
+                    const azimuthDeg = (pos.azimuth * 180 / Math.PI + 360) % 360;
+                    const altitudeDeg = pos.altitude * 180 / Math.PI;
+
+                    if (altitudeDeg > -6) { // Only track when the sun is not too far below the horizon
+                        const isMajorPoint = sunTimes.some(t => time.getHours() === times[t].getHours() && time.getMinutes() === times[t].getMinutes());
+                        sunPathPoints.push({
+                            azimuth: azimuthDeg,
+                            altitude: altitudeDeg,
+                            time: time,
+                            isMajor: isMajorPoint
+                        });
+                    }
+                }
+                log('[SunPath] Done calculating path.');
+            }
+
+            function startArLoop() {
+                const draw = () => {
+                    ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+                    
+                    // Here we would normally use gyroscope data to orient the path,
+                    // but since we're just drawing the path for now, we'll assume a fixed view.
+                    const fixedHeading = 180; // A fixed direction for demonstration
+                    const fixedPitch = 0; // Fixed tilt
+                    const fixedFovH = 60;
+                    const fixedFovV = 45;
+
+                    sunPathPoints.forEach(point => {
+                        let relativeAzimuth = point.azimuth - fixedHeading;
+                        if (relativeAzimuth > 180) relativeAzimuth -= 360;
+                        if (relativeAzimuth < -180) relativeAzimuth += 360;
+
+                        let relativeAltitude = point.altitude - fixedPitch;
+                        
+                        if (Math.abs(relativeAzimuth) < fixedFovH / 2 && Math.abs(relativeAltitude) < fixedFovV / 2) {
+                            const x = (relativeAzimuth + fixedFovH / 2) / fixedFovH * canvasElement.width;
+                            const y = (-relativeAltitude + fixedFovV / 2) / fixedFovV * canvasElement.height;
+                            
+                            ctx.fillStyle = point.isMajor ? 'yellow' : 'rgba(255, 255, 255, 0.5)';
+                            ctx.beginPath();
+                            ctx.arc(x, y, point.isMajor ? 8 : 4, 0, 2 * Math.PI);
+                            ctx.fill();
+
+                            if (point.isMajor) {
+                                ctx.font = "12px sans-serif";
+                                ctx.fillStyle = "white";
+                                ctx.fillText(point.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), x + 10, y - 10);
+                            }
+                        }
+                    });
+
+                    requestAnimationFrame(draw);
+                };
+                requestAnimationFrame(draw);
+            }
+
+            // ---- Event Listeners and Initial Setup ----
+
+            mainButton.addEventListener('click', handleButtonClick);
+
+            // Debug Toggle Button
+            toggleDebugBtn.addEventListener('click', () => {
+                const isHidden = debugBox.style.display === 'none';
+                debugBox.style.display = isHidden ? 'block' : 'none';
+                debugArrow.textContent = isHidden ? '▼' : '▲';
+            });
+            
+            // Initial debug messages
+            log('location.origin =', location.origin);
+            log('isSecureContext =', isSecureContext);
+            if ('permissions' in navigator) {
+                navigator.permissions.query({ name: 'geolocation' })
+                    .then(p => log('permissions.state =', p.state))
+                    .catch(()=>{});
+            }
+        });
+    </script>
 </body>
 </html>
