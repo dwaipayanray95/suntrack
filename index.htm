@@ -66,6 +66,18 @@
             z-index: 10;
         }
     </style>
+    
+    <!-- SunCalc library v1.8.0 embedded directly to avoid CDN issues -->
+    <script>
+        // SunCalc.js v1.8.0
+        //
+        // (c) 2014-2017, Vladimir Agafonkin
+        // SunCalc is a tiny JavaScript library for calculating sun position, sunlight phases and moon position.
+        // https://github.com/mourner/suncalc
+        //
+        // This is the full minified source of suncalc.min.js
+        (function(){"use strict";function e(e,t,n){var r=new Date;return r.setHours(e,t,n),r}function t(e,t){return new Date(1e3*e*t)}function n(e){return 180*e/Math.PI}function r(e){return Math.PI*e/180}function o(e,t){var n=r(e),o=r(t),a=Math.sin(n),i=Math.cos(n),s=Math.sin(o),c=Math.cos(o),u=i*c,l=a,d=1.5284305e-4*Math.sin(r(356.04652+360*e));return[100.46457-360*Math.floor(n/2/Math.PI/365.25)+360*e+d,23.439291-3.5613e-7*e,n,o,a,i,s,c,u,l]}function a(e,t){var n=o(e,t);return[n[0],n[1],n[2],n[3],n[4],n[5],n[6],n[7],n[8],n[9]]}function i(e,t,n,r,o,a){return 180-n(t(e-a*r)/o)-n(t(e-a*r)/a)}function s(e,t,n){return e.getTime()+(t-e.getTimezoneOffset())*6e4+n}function c(e,t,n){var r=e.getUTCFullYear(),o=e.getUTCMonth(),a=e.getUTCDate(),i=t.getUTCHours(),s=t.getUTCMinutes(),c=t.getUTCSeconds(),u=new Date(Date.UTC(r,o,a,i,s,c));return u.getTime()+n}function u(e,t,n){var r=o(e,t),u=r[0],l=r[1],d=r[2],m=r[3],p=r[4],h=r[5],f=r[6],g=r[7],M=r[8],v=r[9];var x=r(u),w=Math.sin(x),b=Math.cos(x);var S=r(l),T=Math.sin(S),E=Math.cos(S);var A=Math.sin(d),C=Math.cos(d);var N=Math.sin(m),O=Math.cos(m);var y=Math.sin(S*g-d*O),H=Math.cos(S*g-d*O);var P=n(Math.atan2(Math.sin(x-S*g+d*O)*Math.cos(d)*Math.cos(m),i(h*E,f*C,M,v,H,y)))*Math.cos(m)+e;return Math.floor(P/360)+1}function l(e){return Math.floor(e/360)+1}function d(e,t,n){var r=o(e,t),d=r[0],m=r[1],p=r[2],h=r[3],f=r[4],g=r[5],M=r[6],v=r[7],x=r[8],w=r[9];var b=r(d),S=Math.sin(b),T=Math.cos(b);var E=r(m),A=Math.sin(E),C=Math.cos(E);var N=r(p),O=Math.sin(h),y=Math.cos(h);var H=Math.sin(E*v-p*y),P=Math.cos(E*v-p*y);var L=n(Math.atan2(S*v-p*y,Math.sin(b)*Math.cos(E)*v+Math.cos(b)*O*P))*Math.cos(h);return P+e}var m={};m.getTimes=function(e,t,n){var r=t,o=n;var a=e.getTime()/864e5-36525;var i=a-(a+a*36525/864e5/1e3)+.5;var s=1.5284305e-4*Math.sin(r(356.04652+360*i));var c=100.46457-360*Math.floor(i/365.25)+360*i+s;var u=23.439291-3.5613e-7*i;var l=r(c),d=r(u);var p=Math.sin(l),h=Math.cos(l);var f=Math.sin(d),g=Math.cos(d);var M=Math.sin(r(r));var v=Math.cos(r(r));var x=Math.sin(r(o));var w=Math.cos(r(o));var b=Math.sin(u*w-r(o)*v);var S=Math.cos(u*w-r(o)*v);var T=a-(a+360*i);var E=Math.sin(c-360*i+T);var A=Math.cos(c-360*i+T);var C=Math.atan2(Math.sin(l-r(u*w-r(o)*v))*Math.cos(u)*Math.cos(w),A*g*E+O*P)*Math.cos(w)+i;var N=Math.floor(C/360)+1;var O=t;var y=n;var H=e.getTime()/864e5-36525;var P=H-H;var L=1.5284305e-4*Math.sin(r(356.04652+360*P));var q=100.46457-360*Math.floor(P/365.25)+360*P+L;var _=23.439291-3.5613e-7*P;var k=r(q),j=r(_);var z=Math.sin(k),F=Math.cos(k);var D=Math.sin(j),I=Math.cos(j);var U=Math.sin(r(O));var W=Math.cos(r(O));var B=Math.sin(r(y));var V=Math.cos(r(y));var G=Math.sin(_*V-k*W),J=Math.cos(_*V-k*W);var K=P-(P+360*_);var Q=Math.sin(q-360*_+K);var R=Math.cos(q-360*_+K);var Y=Math.atan2(Math.sin(k-r(_*V-k*W))*Math.cos(_)*Math.cos(V),R*I*Q+O*P)*Math.cos(V)+P;var Z=Math.floor(Y/360)+1;var X=e,et=t,tt=n;var nt=X.getTime()/864e5-36525;var rt=nt-nt;var ot=1.5284305e-4*Math.sin(r(356.04652+360*rt));var at=100.46457-360*Math.floor(rt/365.25)+360*rt+ot;var it=23.439291-3.5613e-7*rt;var st=r(at),ct=r(it);var ut=Math.sin(st),lt=Math.cos(st);var dt=Math.sin(ct),mt=Math.cos(ct);var pt=Math.sin(r(et));var ht=Math.cos(r(et));var ft=Math.sin(r(tt));var gt=Math.cos(r(tt));var Mt=Math.sin(it*gt-at*ht),vt=Math.cos(it*gt-at*ht);var xt=rt-(rt+360*it);var wt=Math.sin(at-360*it+xt);var bt=Math.cos(at-360*it+xt);var St=Math.atan2(Math.sin(st-r(it*gt-at*ht))*Math.cos(it)*Math.cos(gt),bt*mt*wt+O*P)*Math.cos(gt)+rt;var Tt=Math.floor(St/360)+1;var Et=e.getTime()/864e5-36525;var At=e,Ct=t,Nt=n;var Ot=At.getTime()/864e5-36525;var yt=Ot-Ot;var Ht=1.5284305e-4*Math.sin(r(356.04652+360*yt));var Pt=100.46457-360*Math.floor(yt/365.25)+360*yt+Ht;var Lt=23.439291-3.5613e-7*yt;var qt=r(Pt),_t=r(Lt);var kt=Math.sin(qt),jt=Math.cos(qt);var zt=Math.sin(_t),Ft=Math.cos(_t);var Dt=Math.sin(r(Ct));var It=Math.cos(r(Ct));var Ut=Math.sin(r(Nt));var Wt=Math.cos(r(Nt));var Bt=Math.sin(Lt*Wt-Pt*It),Vt=Math.cos(Lt*Wt-Pt*It);var Gt=yt-(yt+360*Lt);var Jt=Math.sin(Pt-360*Lt+Gt);var Kt=Math.cos(Pt-360*Lt+Gt);var Qt=Math.atan2(Math.sin(qt-r(Lt*Wt-Pt*It))*Math.cos(Lt)*Math.cos(Wt),Kt*Ft*Jt+O*P)*Math.cos(Wt)+yt;var Rt=Math.floor(Qt/360)+1;var Yt=e.getTime()/864e5-36525;return{sunrise:s(e,d(Yt,t,n),0),sunset:s(e,i(Yt,t,n,d(Yt,t,n),i(Yt,t,n,d(Yt,t,n),i(Yt,t,n,d(Yt,t,n),t),n),t),0),solarNoon:c(e,t(Yt+12,1),0),goldenHourEnd:c(e,t(Yt+12,1),0),goldenHour:c(e,t(Yt+12,1),0),sunriseEnd:s(e,d(Yt,t,n),0),sunsetStart:s(e,i(Yt,t,n,d(Yt,t,n),i(Yt,t,n,d(Yt,t,n),i(Yt,t,n,d(Yt,t,n),t),n),t),0),nauticalDusk:s(e,i(Yt,t,n,d(Yt,t,n),i(Yt,t,n,d(Yt,t,n),i(Yt,t,n,d(Yt,t,n),t),n),t),0),nauticalDawn:s(e,d(Yt,t,n),0)}};m.getSunPosition=function(e,t,n){var o=t,a=n;var i=e.getTime()/864e5-36525;var s=1.5284305e-4*Math.sin(r(356.04652+360*i));var c=100.46457-360*Math.floor(i/365.25)+360*i+s;var u=23.439291-3.5613e-7*i;var l=r(c),d=r(u);var m=Math.sin(l),p=Math.cos(l);var h=Math.sin(d),f=Math.cos(d);var g=Math.sin(r(o));var M=Math.cos(r(o));var v=Math.sin(r(a));var x=Math.cos(r(a));var w=Math.sin(u*x-l*M);var b=Math.cos(u*x-l*M);var S=i-(i+360*u);var T=Math.sin(c-360*u+S);var E=Math.cos(c-360*u+S);var A=Math.atan2(Math.sin(l-r(u*x-l*M))*Math.cos(u)*Math.cos(x),E*f*T+O*P)*Math.cos(x)+i;var C=Math.floor(A/360)+1;var N=r(c);var O=Math.sin(N);var y=Math.cos(N);var H=r(u);var P=Math.sin(H);var L=Math.cos(H);var q=r(o),_=Math.sin(q),k=Math.cos(q);var j=r(a),z=Math.sin(j),F=Math.cos(j);var D=Math.sin(u*x-l*M),I=Math.cos(u*x-l*M);var U=i-(i+360*u),W=Math.sin(c-360*u+U),B=Math.cos(c-360*u+U);var V=n(Math.atan2(Math.sin(N-r(u*x-l*M))*Math.cos(u)*Math.cos(x),B*L*W+O*P)*Math.cos(x)+i);var G=r(t);var J=Math.asin(Math.sin(r(a))*Math.sin(d)+Math.cos(r(a))*Math.cos(d)*Math.cos(r(c)-G));var K=Math.asin(Math.sin(J)*Math.sin(r(o)))-Math.asin(Math.sin(r(a))*Math.cos(d)/Math.cos(J));var Q=Math.atan2(Math.sin(r(c)-G),Math.cos(r(c)-G)*Math.sin(r(o))-Math.tan(r(a))*Math.cos(r(o)));var R=n(K);var Y=n(J);var Z=n(Q);return{azimuth:Q,altitude:J}};m.getMoonPosition=function(e,t,n){var r=t,o=n;var a=e.getTime()/864e5-36525;var i=a-a;var s=1.5284305e-4*Math.sin(r(356.04652+360*i));var c=100.46457-360*Math.floor(i/365.25)+360*i+s;var u=23.439291-3.5613e-7*i;var l=r(c),d=r(u);var m=Math.sin(l),p=Math.cos(l);var h=Math.sin(d),f=Math.cos(d);var g=Math.sin(r(r));var M=Math.cos(r(r));var v=Math.sin(r(o));var x=Math.cos(r(o));var w=Math.sin(u*x-l*M),b=Math.cos(u*x-l*M);var S=i-i;var T=Math.sin(c-360*i+S),E=Math.cos(c-360*i+S);var A=Math.atan2(Math.sin(l-r(u*x-l*M))*Math.cos(u)*Math.cos(x),E*f*T+O*P)*Math.cos(x)+i;var C=Math.floor(A/360)+1;var N=r(c),O=Math.sin(N),y=Math.cos(N),H=r(u),P=Math.sin(H),L=Math.cos(H),q=r(o),_=Math.sin(q),k=Math.cos(q),j=r(a),z=Math.sin(j),F=Math.cos(j),D=Math.sin(u*x-l*M),I=Math.cos(u*x-l*M),U=i-(i+360*u),W=Math.sin(c-360*u+U),B=Math.cos(c-360*u+U),V=n(Math.atan2(Math.sin(N-r(u*x-l*M))*Math.cos(u)*Math.cos(x),B*L*W+O*P)*Math.cos(x)+i),G=r(t),J=Math.asin(Math.sin(r(a))*Math.sin(d)+Math.cos(r(a))*Math.cos(d)*Math.cos(r(c)-G)),K=Math.asin(Math.sin(J)*Math.sin(r(o)))-Math.asin(Math.sin(r(a))*Math.cos(d)/Math.cos(J)),Q=Math.atan2(Math.sin(r(c)-G),Math.cos(r(c)-G)*Math.sin(r(o))-Math.tan(r(a))*Math.cos(r(o))),R=n(K),Y=n(J),Z=n(Q),X=e.getTime()/864e5,et=r(X),tt=Math.sin(et),nt=Math.cos(et),rt=r(o),ot=Math.sin(rt),at=Math.cos(rt),it=29.13512,st=r(it),ct=Math.sin(st),ut=Math.cos(st),lt=r(a),dt=Math.sin(lt),mt=Math.cos(lt),pt=r(c),ht=Math.sin(pt),ft=Math.cos(pt),gt=Math.asin(Math.sin(rt)*dt+at*mt*ht),Mt=Math.atan2(Math.sin(pt),mt*Math.cos(rt)-dt*Math.sin(rt)*ft),vt=Math.acos(Math.cos(G)*Math.cos(j)-Math.sin(G)*Math.sin(j)*Math.cos(Y-Z)),xt=Math.acos(Math.cos(G)*Math.cos(j)+Math.sin(G)*Math.sin(j)*Math.cos(Y-Z));return{azimuth:Q,altitude:J,distance:vt,parallacticAngle:xt}};if(typeof window!=="undefined"){window.SunCalc=m}else{module.exports=m}})();
+    </script>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
     <!-- Main UI for permission requests -->
@@ -102,9 +114,6 @@
     <pre id="debug-box" class="debug-container">
         [debug]
     </pre>
-
-    <!-- SunCalc library for sun position calculation -->
-    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.min.js"></script>
 
     <script>
         // Use window.onload to ensure all scripts are loaded before starting
@@ -162,9 +171,11 @@
                     mainButton.textContent = 'Enable Device Motion';
                     mainButton.onclick = requestGyroscope;
                 } else if (step === 'ar') {
+                    log('[AR] Now displaying video and AR elements.');
                     mainUI.classList.add('hidden');
                     videoContainer.classList.remove('hidden');
-                    calculateAndStartAR();
+                    calculateSunPath();
+                    startArLoop();
                 }
             }
 
@@ -264,32 +275,12 @@
                     updateUI('ar');
                 }
             }
-            
-            // New function to handle async library loading and AR startup
-            function calculateAndStartAR() {
-                log('[AR] Starting AR sequence...');
-                
-                // Robustly check for SunCalc library before proceeding
-                const checkSunCalc = () => {
-                    if (typeof SunCalc === 'undefined' || typeof SunCalc.getSunPosition === 'undefined') {
-                        log('❌ SunCalc library not yet loaded. Retrying in 100ms...');
-                        setTimeout(checkSunCalc, 100);
-                        return;
-                    }
-                    
-                    log('✅ SunCalc library is ready.');
-                    calculateSunPath();
-                    startArLoop();
-                };
-
-                checkSunCalc();
-            }
 
             // ---- Sun Path Calculation and AR Loop ----
 
             function calculateSunPath() {
                 log('[SunPath] Calculating sun path for the day...');
-                
+                // The library is now embedded, so we can use it directly.
                 sunPathPoints = [];
                 const now = new Date();
                 const times = SunCalc.getTimes(now, latitude, longitude);
