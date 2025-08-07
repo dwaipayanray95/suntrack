@@ -3,15 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SunTrack App</title>
+    <title>SunTrack AR</title>
     <!-- Use Tailwind CSS for easy and responsive styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts for Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&display=swap" rel="stylesheet">
     <style>
-        /* Custom styles for a cleaner look */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #1f2937;
             color: #d1d5db;
+        }
+        #app-name {
+            font-family: 'Poppins', sans-serif;
         }
         .debug-container {
             position: fixed;
@@ -47,7 +53,7 @@
             position: relative;
             width: 100%;
             height: 100vh;
-            display: none; /* Initially hidden */
+            display: none;
         }
         #videoElement, #canvasElement {
             position: absolute;
@@ -64,7 +70,7 @@
 <body class="flex items-center justify-center min-h-screen p-4">
     <!-- Main UI for permission requests -->
     <div id="main-ui" class="bg-gray-800 p-8 rounded-xl shadow-lg text-center max-w-sm w-full">
-        <h1 class="text-3xl font-bold mb-4">SunTrack</h1>
+        <h1 id="app-name" class="text-3xl font-bold mb-4">SunTrack</h1>
         <p class="text-gray-400 mb-6" id="status-message">
             Get your location to start.
         </p>
@@ -77,6 +83,14 @@
     <div id="video-container" class="hidden">
         <video id="videoElement" playsinline autoplay muted></video>
         <canvas id="canvasElement"></canvas>
+    </div>
+
+    <!-- Error/Info Message Box -->
+    <div id="messageBox" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full text-center">
+            <p id="messageText" class="text-gray-800 text-lg"></p>
+            <button id="closeMessage" class="mt-4 bg-gray-800 text-white py-2 px-4 rounded-full hover:bg-gray-700 transition-colors">Close</button>
+        </div>
     </div>
 
     <!-- Debug Toggle Button -->
@@ -102,14 +116,20 @@
             const videoElement = document.getElementById('videoElement');
             const canvasElement = document.getElementById('canvasElement');
             const ctx = canvasElement.getContext('2d');
+            const messageBox = document.getElementById('messageBox');
+            const messageText = document.getElementById('messageText');
+            const closeMessageButton = document.getElementById('closeMessage');
             const debugBox = document.getElementById('debug-box');
             const toggleDebugBtn = document.getElementById('toggle-debug-btn');
             const debugArrow = document.getElementById('debug-arrow');
 
-            // Global variables
+            // Global variables for sensor data and sun path
             let latitude = null;
             let longitude = null;
-            let currentStep = 'location';
+            let heading = 0; // Device heading (alpha)
+            let pitch = 0; // Device tilt (beta)
+            const horizontalFOV = 60;
+            const verticalFOV = 45;
             let sunPathPoints = [];
 
             // Debug log function
@@ -118,32 +138,42 @@
                 debugBox.scrollTop = debugBox.scrollHeight;
             };
 
-            // ---- Permission and UI Flow ----
+            // ---- UI and Permission Flow ----
 
             function updateUI(step) {
-                currentStep = step;
                 if (step === 'location') {
                     mainUI.classList.remove('hidden');
                     videoContainer.classList.add('hidden');
                     statusMessage.textContent = 'Get your location to start.';
                     mainButton.textContent = 'Get Location';
+                    mainButton.onclick = requestGeolocation;
                 } else if (step === 'camera') {
                     mainUI.classList.remove('hidden');
                     videoContainer.classList.add('hidden');
                     statusMessage.textContent = 'Location found! Now, grant camera access.';
                     mainButton.textContent = 'Get Camera Permission';
+                    mainButton.onclick = requestCamera;
+                } else if (step === 'gyro') {
+                    mainUI.classList.remove('hidden');
+                    videoContainer.classList.add('hidden');
+                    statusMessage.textContent = 'Last step! Enable device motion for AR.';
+                    mainButton.textContent = 'Enable Device Motion';
+                    mainButton.onclick = requestGyroscope;
                 } else if (step === 'ar') {
                     mainUI.classList.add('hidden');
                     videoContainer.classList.remove('hidden');
+                    calculateSunPath();
+                    startArLoop();
                 }
             }
 
-            function handleButtonClick() {
-                if (currentStep === 'location') {
-                    requestGeolocation();
-                } else if (currentStep === 'camera') {
-                    requestCamera();
-                }
+            // Show a custom message box instead of alert
+            function showMessage(message) {
+                messageText.textContent = message;
+                messageBox.style.display = 'flex';
+                closeMessageButton.onclick = () => {
+                    messageBox.style.display = 'none';
+                };
             }
 
             // Request Geolocation permission (Step 1)
@@ -163,7 +193,7 @@
                     },
                     (err) => {
                         log('❌ error code', err.code, err.message);
-                        alert(`Error: ${err.message}. Please enable location services.`);
+                        showMessage(`Error: ${err.message}. Please enable location services.`);
                     },
                     { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
                 );
@@ -185,14 +215,49 @@
                     videoElement.onloadedmetadata = () => {
                         canvasElement.width = videoElement.videoWidth;
                         canvasElement.height = videoElement.videoHeight;
-                        calculateSunPath();
-                        startArLoop();
                     };
                     log('✅ success camera');
-                    updateUI('ar');
+                    updateUI('gyro');
                 } catch (err) {
                     log('❌ error camera:', err.name, err.message);
-                    alert(`Error: ${err.message}. Please allow camera access.`);
+                    showMessage(`Error: ${err.message}. Please allow camera access.`);
+                }
+            }
+
+            // Request Gyroscope permission (Step 3)
+            function requestGyroscope() {
+                log('[click] requesting gyroscope…');
+                if (window.DeviceOrientationEvent) {
+                    const handleOrientation = (event) => {
+                        heading = event.alpha;
+                        pitch = event.beta;
+                    };
+
+                    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                        DeviceOrientationEvent.requestPermission()
+                            .then(permissionState => {
+                                if (permissionState === 'granted') {
+                                    window.addEventListener('deviceorientation', handleOrientation);
+                                    log('✅ success gyroscope');
+                                    updateUI('ar');
+                                } else {
+                                    log('❌ error gyroscope: Permission denied');
+                                    showMessage("Device motion permission denied. Please enable it in your browser settings.");
+                                }
+                            })
+                            .catch(error => {
+                                log('❌ error gyroscope:', error);
+                                showMessage("There was an error requesting device motion. Please try again.");
+                            });
+                    } else {
+                        // Non-iOS browsers, permission is not needed
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        log('✅ success gyroscope (no permission prompt needed)');
+                        updateUI('ar');
+                    }
+                } else {
+                    log('❌ error gyroscope: Not supported');
+                    showMessage("Your device does not support the necessary motion sensors for this AR application.");
                 }
             }
 
@@ -203,21 +268,24 @@
                 sunPathPoints = [];
                 const now = new Date();
                 const times = SunCalc.getTimes(now, latitude, longitude);
-                const sunTimes = [
-                    'sunrise', 'sunriseEnd', 'goldenHourEnd', 'solarNoon',
-                    'goldenHour', 'sunsetStart', 'sunset'
-                ];
-
-                // Calculate sun position every 30 minutes for a full day
-                for (let i = 0; i < 24 * 60; i += 30) {
+                const sunTimes = ['sunrise', 'sunriseEnd', 'goldenHourEnd', 'solarNoon', 'goldenHour', 'sunsetStart', 'sunset'];
+                
+                // Calculate sun position every 15 minutes for a full day
+                for (let i = 0; i < 24 * 60; i += 15) {
                     const time = new Date(now.getTime() + i * 60 * 1000);
                     const pos = SunCalc.getSunPosition(time, latitude, longitude);
                     
                     const azimuthDeg = (pos.azimuth * 180 / Math.PI + 360) % 360;
                     const altitudeDeg = pos.altitude * 180 / Math.PI;
 
-                    if (altitudeDeg > -6) { // Only track when the sun is not too far below the horizon
-                        const isMajorPoint = sunTimes.some(t => time.getHours() === times[t].getHours() && time.getMinutes() === times[t].getMinutes());
+                    if (altitudeDeg > -10) { // Only track when the sun is not too far below the horizon
+                        const isMajorPoint = sunTimes.some(t => {
+                            const majorTime = times[t];
+                            if (!majorTime) return false;
+                            // Check if within a 15-minute window of a major event
+                            const diff = Math.abs(time.getTime() - majorTime.getTime());
+                            return diff < 15 * 60 * 1000;
+                        });
                         sunPathPoints.push({
                             azimuth: azimuthDeg,
                             altitude: altitudeDeg,
@@ -231,39 +299,79 @@
 
             function startArLoop() {
                 const draw = () => {
+                    // Draw the camera feed
                     ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
                     
-                    // Here we would normally use gyroscope data to orient the path,
-                    // but since we're just drawing the path for now, we'll assume a fixed view.
-                    const fixedHeading = 180; // A fixed direction for demonstration
-                    const fixedPitch = 0; // Fixed tilt
-                    const fixedFovH = 60;
-                    const fixedFovV = 45;
+                    const halfFOV_H = horizontalFOV / 2;
+                    const halfFOV_V = verticalFOV / 2;
 
+                    // Draw the horizon line
+                    const horizonRelativeAltitude = 0 - pitch;
+                    if (Math.abs(horizonRelativeAltitude) < halfFOV_V) {
+                        const horizonY = (-horizonRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(0, horizonY);
+                        ctx.lineTo(canvasElement.width, horizonY);
+                        ctx.stroke();
+                    }
+
+                    // Draw the sun path points
                     sunPathPoints.forEach(point => {
-                        let relativeAzimuth = point.azimuth - fixedHeading;
+                        let relativeAzimuth = point.azimuth - heading;
                         if (relativeAzimuth > 180) relativeAzimuth -= 360;
                         if (relativeAzimuth < -180) relativeAzimuth += 360;
 
-                        let relativeAltitude = point.altitude - fixedPitch;
+                        let relativeAltitude = point.altitude - pitch;
                         
-                        if (Math.abs(relativeAzimuth) < fixedFovH / 2 && Math.abs(relativeAltitude) < fixedFovV / 2) {
-                            const x = (relativeAzimuth + fixedFovH / 2) / fixedFovH * canvasElement.width;
-                            const y = (-relativeAltitude + fixedFovV / 2) / fixedFovV * canvasElement.height;
+                        if (Math.abs(relativeAzimuth) < halfFOV_H && Math.abs(relativeAltitude) < halfFOV_V) {
+                            const x = (relativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                            const y = (-relativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
                             
                             ctx.fillStyle = point.isMajor ? 'yellow' : 'rgba(255, 255, 255, 0.5)';
                             ctx.beginPath();
-                            ctx.arc(x, y, point.isMajor ? 8 : 4, 0, 2 * Math.PI);
+                            ctx.arc(x, y, point.isMajor ? 6 : 3, 0, 2 * Math.PI);
                             ctx.fill();
 
                             if (point.isMajor) {
-                                ctx.font = "12px sans-serif";
+                                ctx.font = "10px sans-serif";
                                 ctx.fillStyle = "white";
-                                ctx.fillText(point.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), x + 10, y - 10);
+                                ctx.fillText(point.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), x + 8, y);
                             }
                         }
                     });
 
+                    // Highlight the current sun position
+                    const now = new Date();
+                    const currentSunPos = SunCalc.getSunPosition(now, latitude, longitude);
+                    const currentSunAzimuth = (currentSunPos.azimuth * 180 / Math.PI + 360) % 360;
+                    const currentSunAltitude = currentSunPos.altitude * 180 / Math.PI;
+
+                    let currentRelativeAzimuth = currentSunAzimuth - heading;
+                    if (currentRelativeAzimuth > 180) currentRelativeAzimuth -= 360;
+                    if (currentRelativeAzimuth < -180) currentRelativeAzimuth += 360;
+
+                    let currentRelativeAltitude = currentSunAltitude - pitch;
+
+                    if (Math.abs(currentRelativeAzimuth) < halfFOV_H && Math.abs(currentRelativeAltitude) < halfFOV_V) {
+                        const x = (currentRelativeAzimuth + halfFOV_H) / (halfFOV_H * 2) * canvasElement.width;
+                        const y = (-currentRelativeAltitude + halfFOV_V) / (halfFOV_V * 2) * canvasElement.height;
+                        
+                        // Draw a glowing sun icon
+                        ctx.fillStyle = 'rgba(255, 200, 0, 1)';
+                        ctx.shadowColor = 'rgba(255, 200, 0, 0.7)';
+                        ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 10, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.shadowBlur = 0; // Reset shadow for other drawings
+                        
+                        ctx.font = "14px sans-serif";
+                        ctx.fillStyle = "white";
+                        ctx.fillText("☀️ Sun", x + 15, y);
+                    }
+                    
                     requestAnimationFrame(draw);
                 };
                 requestAnimationFrame(draw);
@@ -271,7 +379,7 @@
 
             // ---- Event Listeners and Initial Setup ----
 
-            mainButton.addEventListener('click', handleButtonClick);
+            mainButton.onclick = () => updateUI('location'); // Initial button click starts the process
 
             // Debug Toggle Button
             toggleDebugBtn.addEventListener('click', () => {
