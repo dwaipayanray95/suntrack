@@ -32,7 +32,7 @@
         <p class="text-sm md:text-base text-gray-600">Follow the arrow to find the sun!</p>
 
         <!-- Video and Canvas for the AR effect -->
-        <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-black border-4 border-gray-300">
+        <div id="video-container" class="relative w-full h-full rounded-2xl overflow-hidden bg-black border-4 border-gray-300">
             <video id="videoElement" playsinline autoplay muted class="absolute top-0 left-0 w-full h-full object-cover"></video>
             <canvas id="canvasElement" class="absolute top-0 left-0 w-full h-full"></canvas>
             
@@ -40,6 +40,13 @@
             <div id="startButton" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 bg-opacity-90 text-gray-700 font-semibold cursor-pointer transition-opacity duration-300">
                 <p class="text-lg md:text-xl">Tap to Start AR</p>
                 <p id="loadingMessage" class="text-sm md:text-base mt-2 hidden">Waiting for permissions...</p>
+            </div>
+            
+            <!-- Dedicated button for GPS permission -->
+            <div id="gps-button" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2">
+                <button class="bg-gray-800 text-white py-2 px-4 rounded-full shadow-lg text-sm md:text-base hover:bg-gray-700 transition-colors">
+                    Request GPS
+                </button>
             </div>
         </div>
 
@@ -61,6 +68,7 @@
             const videoElement = document.getElementById('videoElement');
             const canvasElement = document.getElementById('canvasElement');
             const startButton = document.getElementById('startButton');
+            const gpsButton = document.getElementById('gps-button');
             const loadingMessage = document.getElementById('loadingMessage');
             const cameraStatus = document.getElementById('camera-status');
             const gpsStatus = document.getElementById('gps-status');
@@ -73,6 +81,11 @@
             let heading = 0; // Device heading (alpha)
             let pitch = 0; // Device tilt (beta)
             let roll = 0; // Device roll (gamma)
+
+            // Track permission states
+            let cameraPermissionGranted = false;
+            let gpsPermissionGranted = false;
+            let gyroPermissionGranted = false;
 
             // Assumed field of view for the camera in degrees (simplified)
             const horizontalFOV = 60;
@@ -96,12 +109,12 @@
                         canvasElement.width = videoElement.videoWidth;
                         canvasElement.height = videoElement.videoHeight;
                     };
+                    cameraPermissionGranted = true;
                     cameraStatus.textContent = 'Camera: Active';
                     cameraStatus.classList.remove('text-red-600');
                     cameraStatus.classList.add('text-green-600');
                     console.log("Camera access granted.");
-                    startButton.style.display = 'none'; // Hide the start button after permissions are requested
-                    startArLoop(); // Start the main loop after camera is ready
+                    checkAllPermissions();
                 } catch (err) {
                     cameraStatus.textContent = 'Camera: Denied';
                     console.error("Error accessing camera: ", err);
@@ -111,18 +124,22 @@
 
             // Function to request GPS access
             function setupGPS() {
+                gpsButton.style.display = 'none';
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
                         (position) => {
                             latitude = position.coords.latitude;
                             longitude = position.coords.longitude;
+                            gpsPermissionGranted = true;
                             gpsStatus.textContent = 'GPS: Active';
                             gpsStatus.classList.remove('text-red-600');
                             gpsStatus.classList.add('text-green-600');
                             console.log("GPS access granted.");
+                            checkAllPermissions();
                         },
                         (error) => {
                             gpsStatus.textContent = 'GPS: Denied';
+                            gpsButton.style.display = 'block';
                             console.error("Error accessing GPS: ", error);
                             showError("Please enable GPS for accurate sun position.");
                         }
@@ -148,10 +165,12 @@
                             .then(permissionState => {
                                 if (permissionState === 'granted') {
                                     window.addEventListener('deviceorientation', handleOrientation);
+                                    gyroPermissionGranted = true;
                                     gyroStatus.textContent = 'Gyro: Active';
                                     gyroStatus.classList.remove('text-red-600');
                                     gyroStatus.classList.add('text-green-600');
                                     console.log("Gyroscope access granted.");
+                                    checkAllPermissions();
                                 } else {
                                     gyroStatus.textContent = 'Gyro: Denied';
                                     console.error("Permission for gyroscope denied.");
@@ -161,10 +180,12 @@
                     } else {
                         // Non-iOS browsers
                         window.addEventListener('deviceorientation', handleOrientation);
+                        gyroPermissionGranted = true;
                         gyroStatus.textContent = 'Gyro: Active';
                         gyroStatus.classList.remove('text-red-600');
                         gyroStatus.classList.add('text-green-600');
                         console.log("Gyroscope access granted (no permission prompt needed).");
+                        checkAllPermissions();
                     }
                 } else {
                     gyroStatus.textContent = 'Gyro: Not Supported';
@@ -173,14 +194,23 @@
             }
 
             // Main function to start the application after user interaction
-            function startApplication() {
+            function startPermissionRequests() {
+                startButton.textContent = 'Waiting for permissions...';
                 loadingMessage.style.display = 'block'; // Show loading message
                 // Use a short delay to ensure the user gesture is fully processed
                 setTimeout(() => {
                     setupCamera();
-                    setupGPS();
                     setupGyro();
+                    setupGPS();
                 }, 300);
+            }
+
+            // Check if all permissions are granted before starting the AR loop
+            function checkAllPermissions() {
+                if (cameraPermissionGranted && gpsPermissionGranted && gyroPermissionGranted) {
+                    startButton.style.display = 'none'; // Hide the start button
+                    startArLoop();
+                }
             }
 
             // ---- Main AR Loop ----
@@ -227,11 +257,9 @@
             // ---- Drawing the Sun Effect ----
 
             function drawSunFlare(x, y) {
-                // Clear the canvas to redraw on each frame
                 ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                 ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
 
-                // Use a gradient for a more realistic sun effect
                 const gradient = ctx.createRadialGradient(x, y, 0, x, y, 100);
                 gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
                 gradient.addColorStop(0.3, 'rgba(255, 200, 50, 0.5)');
@@ -243,7 +271,6 @@
                 ctx.arc(x, y, 100, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Draw a bright white core
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
                 ctx.beginPath();
                 ctx.arc(x, y, 10, 0, 2 * Math.PI);
@@ -253,7 +280,6 @@
             // ---- Drawing the Guiding Arrow ----
 
             function drawGuidingArrow(relativeAzimuth, relativeAltitude) {
-                // Clear the canvas to redraw on each frame
                 ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
                 ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
 
@@ -262,26 +288,25 @@
                 const arrowSize = 40;
                 const arrowPadding = 20;
 
-                // Determine the arrow's position on the canvas edge
                 let x, y, rotation;
                 const halfFOV_H = horizontalFOV / 2;
                 const halfFOV_V = verticalFOV / 2;
 
                 if (Math.abs(relativeAzimuth) >= halfFOV_H) {
-                    if (relativeAzimuth > 0) { // Right side
+                    if (relativeAzimuth > 0) {
                         x = canvasWidth - arrowPadding;
                         rotation = Math.PI / 2;
-                    } else { // Left side
+                    } else {
                         x = arrowPadding;
                         rotation = -Math.PI / 2;
                     }
                     y = ((relativeAltitude + halfFOV_V) / (halfFOV_V * 2)) * canvasHeight;
                     y = Math.min(Math.max(y, arrowPadding), canvasHeight - arrowPadding);
                 } else {
-                    if (relativeAltitude > 0) { // Top side
+                    if (relativeAltitude > 0) {
                         y = arrowPadding;
                         rotation = Math.PI;
-                    } else { // Bottom side
+                    } else {
                         y = canvasHeight - arrowPadding;
                         rotation = 0;
                     }
@@ -289,7 +314,6 @@
                     x = Math.min(Math.max(x, arrowPadding), canvasWidth - arrowPadding);
                 }
 
-                // Draw the arrow
                 ctx.save();
                 ctx.translate(x, y);
                 ctx.rotate(rotation);
@@ -316,7 +340,8 @@
             }
             
             // Add a click event listener to the start button
-            startButton.addEventListener('click', startApplication);
+            startButton.addEventListener('click', startPermissionRequests);
+            gpsButton.addEventListener('click', setupGPS);
 
         });
     </script>
