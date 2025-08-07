@@ -35,8 +35,11 @@
         <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-black border-4 border-gray-300">
             <video id="videoElement" playsinline autoplay muted class="absolute top-0 left-0 w-full h-full object-cover"></video>
             <canvas id="canvasElement" class="absolute top-0 left-0 w-full h-full"></canvas>
-            <div id="loadingMessage" class="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-70 text-gray-700 text-lg md:text-xl font-semibold">
-                Waiting for permissions...
+            
+            <!-- This is now a clickable container to start the app -->
+            <div id="startButton" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 bg-opacity-90 text-gray-700 font-semibold cursor-pointer transition-opacity duration-300">
+                <p class="text-lg md:text-xl">Tap to Start AR</p>
+                <p id="loadingMessage" class="text-sm md:text-base mt-2 hidden">Waiting for permissions...</p>
             </div>
         </div>
 
@@ -57,6 +60,7 @@
             // Get DOM elements
             const videoElement = document.getElementById('videoElement');
             const canvasElement = document.getElementById('canvasElement');
+            const startButton = document.getElementById('startButton');
             const loadingMessage = document.getElementById('loadingMessage');
             const cameraStatus = document.getElementById('camera-status');
             const gpsStatus = document.getElementById('gps-status');
@@ -94,7 +98,7 @@
                     cameraStatus.classList.remove('text-red-600');
                     cameraStatus.classList.add('text-green-600');
                     console.log("Camera access granted.");
-                    loadingMessage.style.display = 'none';
+                    startButton.style.display = 'none'; // Hide the start button after permissions are requested
                     startArLoop(); // Start the main loop after camera is ready
                 } catch (err) {
                     cameraStatus.textContent = 'Camera: Denied';
@@ -131,9 +135,6 @@
             function setupGyro() {
                 if (window.DeviceOrientationEvent) {
                     const handleOrientation = (event) => {
-                        // event.alpha is the compass heading (0-360)
-                        // event.beta is the front-to-back tilt (-180 to 180)
-                        // event.gamma is the left-to-right tilt (-90 to 90)
                         heading = event.alpha;
                         pitch = event.beta;
                         roll = event.gamma;
@@ -152,7 +153,6 @@
                                 } else {
                                     gyroStatus.textContent = 'Gyro: Denied';
                                     console.error("Permission for gyroscope denied.");
-                                    showError("Please allow motion sensor access in your browser settings.");
                                 }
                             })
                             .catch(console.error);
@@ -168,6 +168,14 @@
                     gyroStatus.textContent = 'Gyro: Not Supported';
                     console.error("Device orientation not supported.");
                 }
+            }
+
+            // Main function to start the application after user interaction
+            function startApplication() {
+                loadingMessage.style.display = 'block'; // Show loading message
+                setupCamera();
+                setupGPS();
+                setupGyro();
             }
 
             // ---- Main AR Loop ----
@@ -254,29 +262,24 @@
                 const halfFOV_H = horizontalFOV / 2;
                 const halfFOV_V = verticalFOV / 2;
 
-                // The sun is either to the left or right (relativeAzimuth) or up or down (relativeAltitude)
                 if (Math.abs(relativeAzimuth) >= halfFOV_H) {
-                    // Arrow is on the left or right side
                     if (relativeAzimuth > 0) { // Right side
                         x = canvasWidth - arrowPadding;
-                        rotation = Math.PI / 2; // Pointing left
+                        rotation = Math.PI / 2;
                     } else { // Left side
                         x = arrowPadding;
-                        rotation = -Math.PI / 2; // Pointing right
+                        rotation = -Math.PI / 2;
                     }
-                    // Place the arrow vertically based on relativeAltitude
                     y = ((relativeAltitude + halfFOV_V) / (halfFOV_V * 2)) * canvasHeight;
                     y = Math.min(Math.max(y, arrowPadding), canvasHeight - arrowPadding);
                 } else {
-                    // Arrow is on the top or bottom
                     if (relativeAltitude > 0) { // Top side
                         y = arrowPadding;
-                        rotation = Math.PI; // Pointing down
+                        rotation = Math.PI;
                     } else { // Bottom side
                         y = canvasHeight - arrowPadding;
-                        rotation = 0; // Pointing up
+                        rotation = 0;
                     }
-                    // Place the arrow horizontally based on relativeAzimuth
                     x = ((relativeAzimuth + halfFOV_H) / (halfFOV_H * 2)) * canvasWidth;
                     x = Math.min(Math.max(x, arrowPadding), canvasWidth - arrowPadding);
                 }
@@ -303,14 +306,13 @@
 
             function showError(message) {
                 loadingMessage.textContent = message;
-                loadingMessage.style.display = 'flex';
+                loadingMessage.style.display = 'block';
                 loadingMessage.classList.add('bg-red-900', 'bg-opacity-80');
             }
+            
+            // Add a click event listener to the start button
+            startButton.addEventListener('click', startApplication);
 
-            // ---- Initial calls to set up all services ----
-            setupCamera();
-            setupGPS();
-            setupGyro();
         });
     </script>
 </body>
