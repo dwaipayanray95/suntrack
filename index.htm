@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>SunTrack AR • Full Dome</title>
+<title>SunTrack AR • Film Sunpath</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
 <style>
@@ -20,7 +20,7 @@
   video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   video{z-index:0} canvas{z-index:1}
 
-  /* Topbar (minimal) */
+  /* Top (brand + status + light controls) */
   #topbar{
     position:fixed; left:12px; right:12px; top:calc(env(safe-area-inset-top) + 8px);
     display:flex; align-items:center; gap:8px; z-index:3;
@@ -39,7 +39,7 @@
     font-weight:600;letter-spacing:.2px;font-size:12px;padding:8px 10px;
   }
 
-  /* Bottom controls */
+  /* Bottom flow buttons */
   #controls{
     position:fixed; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom) + 108px);
     display:flex; gap:8px; z-index:3; background:var(--glass); border:1px solid rgba(255,255,255,.08);
@@ -69,6 +69,7 @@
     <div id="status" class="pill">Ready</div>
     <div id="quick" class="pill">
       <button id="bLevel">Level</button>
+      <button id="bNorth">Set North</button>
       <select id="lens">
         <option value="65">Wide</option>
         <option value="120">Ultra-wide</option>
@@ -99,22 +100,32 @@
 const $ = id => document.getElementById(id);
 const vid=$('vid'), cv=$('cv'), ctx=cv.getContext('2d');
 const statusEl=$('status'), dbg=$('debug'), toggleDbg=$('toggleDbg');
-const selLens=$('lens'), bLevel=$('bLevel');
+const selLens=$('lens'), bLevel=$('bLevel'), bNorth=$('bNorth');
 const log=(...a)=>{ dbg.textContent+=a.join(' ')+'\n'; dbg.scrollTop=dbg.scrollHeight; };
 
 /* ===== State ===== */
 let stream;
 let lat=null, lng=null;
+
 let rawH=0, rawP=0, rawR=0;
 let smoothH=0, smoothP=0, smoothR=0;
-const SMOOTH=0.12;
 
-let HFOV=65;      // selected lens HFOV
-let vFOV=45;      // computed from aspect
-let pitchZero=0;  // user “Level” baseline
+let headingOffset=0; // “Set North” corrector
+let pitchZero=0;     // “Level” baseline
+
+// time-based smoothing for stickiness
+let lastT=0;
+function smooth(val, target, halflifeMs, dtMs){
+  const k = Math.pow(0.5, dtMs/halflifeMs);
+  return val*k + target*(1-k);
+}
+
+let HFOV=65;      // selected lens HFOV (deg)
+let vFOV=45;      // computed from aspect (deg)
 let raf=null, arActive=false;
 
 let path=[];      // 24h [{t, azN, alt}]
+let horizonVecs=null;
 
 /* ===== Math utils ===== */
 const rad2deg=r=>r*180/Math.PI, deg2rad=d=>d*Math.PI/180;
@@ -140,20 +151,35 @@ function norm(a){ return Math.hypot(a[0],a[1],a[2]); }
 function normalize(a){ const n=norm(a)||1; return [a[0]/n,a[1]/n,a[2]/n]; }
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 
-/* ===== Camera basis (yaw/pitch/roll → ENU) ===== */
+/* ===== Robust camera basis (no zenith crash) =====
+   World ENU (x=E, y=N, z=Up). Build camera right/up/fwd from yaw, pitch, roll.
+   Near zenith/nadir, horizontal cross products go singular. We guard it.
+*/
 function buildCameraBasis(headingDeg, pitchDeg, rollDeg){
-  const yaw = deg2rad(headingDeg);
+  const yaw = deg2rad((headingDeg + headingOffset + 360) % 360);
   const pitch = deg2rad(pitchDeg - pitchZero);
   const roll = deg2rad(rollDeg);
 
+  // Forward unit vector
   const hx = Math.sin(yaw), hy = Math.cos(yaw);
   const ch = Math.cos(pitch), sh = Math.sin(pitch);
-  const fwd = normalize([ ch*hx, ch*hy, sh ]);
+  let fwd = normalize([ ch*hx, ch*hy, sh ]);
 
   const upW=[0,0,1];
-  let right = normalize(cross(upW, fwd));
-  let up    = normalize(cross(fwd, right));
 
+  // If fwd ~ up/down (|dot| close to 1), use a horizontal right seed from yaw
+  let right;
+  if (Math.abs(dot(fwd, upW)) > 0.98){
+    // horizontal right vector perpendicular to horizontal forward
+    const rightH = normalize([ Math.cos(yaw), -Math.sin(yaw), 0 ]);
+    right = normalize(rightH);
+  } else {
+    right = normalize(cross(upW, fwd));  // regular case
+  }
+
+  let up = normalize(cross(fwd, right));
+
+  // Apply roll about forward
   if (Math.abs(roll) > 1e-6){
     const cr=Math.cos(roll), sr=Math.sin(roll);
     const r2=[ right[0]*cr + up[0]*sr, right[1]*cr + up[1]*sr, right[2]*cr + up[2]*sr ];
@@ -172,13 +198,12 @@ function makeProjector(basis, HFOVdeg, vFOVdeg, w, h){
     if (z<=1e-6) return {vis:false,inFront:false};
     const xN = x/(z*tH), yN = y/(z*tV);
     const px=(xN*0.5+0.5)*w, py=(-yN*0.5+0.5)*h;
-    // generous visibility so curves don’t pop at the edge
     const vis = xN>=-1.35 && xN<=1.35 && yN>=-1.35 && yN<=1.35;
     return {x:px,y:py,vis,inFront:true};
   };
 }
 
-/* ===== Build full 24h path ===== */
+/* ===== Path + horizon build ===== */
 function buildFullPath(){
   path.length=0;
   const now=new Date();
@@ -186,24 +211,95 @@ function buildFullPath(){
   const end=new Date(start); end.setDate(end.getDate()+1);
   for(let t=new Date(start); t<=end; t.setMinutes(t.getMinutes()+5)){
     const pos=SunCalc.getPosition(t,lat,lng);
-    const azN=(rad2deg(pos.azimuth)+180+360)%360; // SunCalc: from south CW → from north CW
-    let alt = rad2deg(pos.altitude) + refractLift(rad2deg(pos.altitude));
+    const azN=(rad2deg(pos.azimuth)+180+360)%360; // SunCalc: south-CW → north-CW
+    const altGeo=rad2deg(pos.altitude);
+    const alt = altGeo + refractLift(altGeo);
     path.push({t:new Date(t), azN, alt});
   }
   log('🎯 24h path points:', path.length);
 }
-
-/* ===== Horizon polyline across 360° ===== */
-function buildHorizonPoints(){
+function buildHorizon(){
   const pts=[];
-  const alt = refractLift(0); // tiny lift so your eye's horizon matches
-  for(let a=0; a<360; a+=2){
-    pts.push( enuFromAzAlt(a, alt) );
-  }
-  return pts;
+  const alt = refractLift(0); // small lift for perceived horizon
+  for(let a=0; a<360; a+=2){ pts.push( enuFromAzAlt(a, alt) ); }
+  horizonVecs = pts;
 }
 
-/* ===== Camera ===== */
+/* ===== Drawing helpers ===== */
+function strokePolyline(project, vecs, style={color:'#fff', width:2, dash:null}){
+  const w=cv.width;
+  ctx.lineWidth=style.width; ctx.strokeStyle=style.color;
+  ctx.setLineDash(style.dash?style.dash:[]);
+  ctx.beginPath(); let drawing=false; let prevX=null;
+  for(const v of vecs){
+    const p=project(v);
+    if(!p.vis){ if(drawing){ ctx.stroke(); drawing=false; prevX=null; } continue; }
+    // avoid huge jump stitching at screen edge
+    if(drawing && prevX!=null && Math.abs(p.x-prevX)>w*0.45){ ctx.stroke(); ctx.beginPath(); drawing=false; }
+    if(!drawing){ ctx.moveTo(p.x,p.y); drawing=true; } else { ctx.lineTo(p.x,p.y); }
+    prevX=p.x;
+  }
+  if(drawing) ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/* ===== Render loop ===== */
+function draw(){
+  const w=cv.width, h=cv.height;
+  ctx.clearRect(0,0,w,h);
+
+  const basis = buildCameraBasis(smoothH, smoothP, smoothR);
+  const project = makeProjector(basis, HFOV, vFOV, w, h);
+
+  // Horizon (full 360°, never vanishes)
+  strokePolyline(project, horizonVecs, {color:'rgba(255,255,255,.9)', width:2});
+
+  // Sun path (day solid, night dashed)
+  const dayVecs=[], nightVecs=[];
+  for(const pt of path){
+    const v= enuFromAzAlt(pt.azN, pt.alt);
+    if (pt.alt>0) dayVecs.push(v); else nightVecs.push(v);
+  }
+  strokePolyline(project, nightVecs, {color:'var(--night)', width:3, dash:[6,6]});
+  ctx.save(); ctx.shadowColor='var(--glow)'; ctx.shadowBlur=12;
+  strokePolyline(project, dayVecs, {color:'var(--gold)', width:3});
+  ctx.restore();
+
+  // Hour labels (project each hour)
+  ctx.font='600 12px Inter, system-ui, sans-serif'; ctx.textAlign='center';
+  for(const pt of path){
+    if(pt.t.getMinutes()!==0) continue;
+    const p=project( enuFromAzAlt(pt.azN, pt.alt) ); if(!p.vis) continue;
+    const label=pt.t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    ctx.save(); ctx.lineWidth=4; ctx.strokeStyle='var(--edge)'; ctx.fillStyle='var(--ink)';
+    ctx.strokeText(label,p.x,p.y-10); ctx.fillText(label,p.x,p.y-10);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,.92)'; ctx.fill();
+  }
+
+  // Now marker
+  const now=new Date();
+  const posNow=SunCalc.getPosition(now, lat, lng);
+  const azNow=(rad2deg(posNow.azimuth)+180+360)%360;
+  const altGeo=rad2deg(posNow.altitude); const altNow=altGeo+refractLift(altGeo);
+  const pNow=project( enuFromAzAlt(azNow, altNow) );
+  if(pNow.vis){
+    ctx.save(); ctx.shadowColor='rgba(255,200,0,.75)'; ctx.shadowBlur=18; ctx.fillStyle='rgba(255,200,0,1)';
+    ctx.beginPath(); ctx.arc(pNow.x, pNow.y, 10, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    ctx.fillStyle='var(--ink)'; ctx.font='700 12px Inter'; ctx.textAlign='center';
+    ctx.fillText('Now', pNow.x, pNow.y-16);
+  } else {
+    const x=clamp(pNow.x,18,w-18), y=clamp(pNow.y,18,h-18);
+    const ang=Math.atan2(pNow.y-y, pNow.x-x);
+    ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.fillStyle='rgba(255,200,0,1)';
+    ctx.beginPath(); ctx.moveTo(-10,-8); ctx.lineTo(14,0); ctx.lineTo(-10,8); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
+  raf=requestAnimationFrame(draw);
+}
+
+/* ===== Permissions flow ===== */
 $('bCam').onclick = async () => {
   try{
     statusEl.textContent='Opening camera…';
@@ -217,7 +313,6 @@ $('bCam').onclick = async () => {
   }catch(e){ statusEl.textContent='Camera error'; log('❌ Camera ERR', e.message); }
 };
 
-/* ===== Geolocation ===== */
 $('bGeo').onclick = () => {
   statusEl.textContent='Getting location…';
   navigator.geolocation.getCurrentPosition(p=>{
@@ -229,16 +324,23 @@ $('bGeo').onclick = () => {
   { enableHighAccuracy:true, timeout:10000 });
 };
 
-/* ===== Orientation ===== */
 function onOri(e){
-  const h=(e.webkitCompassHeading!=null)?e.webkitCompassHeading:(360-(e.alpha||0));
-  const p=(e.beta||0)-90;  // portrait baseline
-  const r=(e.gamma||0);
-  rawH=(h+360)%360; rawP=p; rawR=r;
-  smoothH = smoothH*(1-SMOOTH) + rawH*SMOOTH;
-  smoothP = smoothP*(1-SMOOTH) + rawP*SMOOTH;
-  smoothR = smoothR*(1-SMOOTH) + rawR*SMOOTH;
-  statusEl.textContent = `H:${smoothH.toFixed(1)}°  P:${(smoothP-pitchZero).toFixed(1)}°`;
+  const now=performance.now(); const dt = lastT? (now-lastT):16; lastT=now;
+
+  // Heading
+  const hRaw = (e.webkitCompassHeading!=null) ? e.webkitCompassHeading : (360-(e.alpha||0));
+  rawH = (hRaw + 360) % 360;
+
+  // Pitch / Roll (portrait baseline)
+  rawP = (e.beta||0) - 90;
+  rawR = (e.gamma||0);
+
+  // Time-based smoothing (stick without jelly)
+  smoothH = smooth(smoothH, rawH, 140, dt); // halflife ~140ms
+  smoothP = smooth(smoothP, rawP, 160, dt);
+  smoothR = smooth(smoothR, rawR, 120, dt);
+
+  statusEl.textContent = `H:${(smoothH+headingOffset).toFixed(1)}°  P:${(smoothP-pitchZero).toFixed(1)}°`;
 }
 $('bGyro').onclick = () => {
   statusEl.textContent='Enabling motion…';
@@ -255,87 +357,10 @@ $('bGyro').onclick = () => {
   }
 };
 
-/* ===== Lens / Level ===== */
+/* ===== Lens / Level / North ===== */
 selLens.onchange = ()=>{ HFOV=parseFloat(selLens.value); computeVFOV(); log('🔁 Lens HFOV',HFOV,'vFOV≈',vFOV.toFixed(1)); };
 bLevel.onclick = ()=>{ pitchZero=smoothP; log('🧭 Horizon leveled. pitchZero=', pitchZero.toFixed(2)); };
-
-/* ===== Draw helpers ===== */
-function strokePolyline(project, vecs, style={color:'#fff', width:2, dash:null}){
-  const w=cv.width;
-  ctx.lineWidth=style.width; ctx.strokeStyle=style.color;
-  ctx.setLineDash(style.dash?style.dash:[]);
-  ctx.beginPath(); let drawing=false; let prevX=null;
-  for(const v of vecs){
-    const p=project(v);
-    if(!p.vis){ if(drawing){ ctx.stroke(); drawing=false; prevX=null; } continue; }
-    if(drawing && prevX!=null && Math.abs(p.x-prevX)>w*0.45){ ctx.stroke(); ctx.beginPath(); drawing=false; }
-    if(!drawing){ ctx.moveTo(p.x,p.y); drawing=true; } else { ctx.lineTo(p.x,p.y); }
-    prevX=p.x;
-  }
-  if(drawing) ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-/* ===== Render loop ===== */
-const horizonVecs = buildHorizonPoints();
-
-function draw(){
-  const w=cv.width, h=cv.height;
-  ctx.clearRect(0,0,w,h);
-
-  const basis = buildCameraBasis(smoothH, smoothP, smoothR);
-  const project = makeProjector(basis, HFOV, vFOV, w, h);
-
-  // Horizon (always computed across 360°, so it won't vanish)
-  strokePolyline(project, horizonVecs, {color:'rgba(255,255,255,.85)', width:2, dash:null});
-
-  // Build ENU vectors for path on-the-fly (cheap)
-  const daySeg=[], nightSeg=[];
-  for(const pt of path){
-    const v= enuFromAzAlt(pt.azN, pt.alt);
-    if(pt.alt>0) daySeg.push(v); else nightSeg.push(v);
-  }
-
-  // Night under, then day with glow
-  strokePolyline(project, nightSeg, {color:'var(--night)', width:3, dash:[6,6]});
-  ctx.save(); ctx.shadowColor='var(--glow)'; ctx.shadowBlur=12;
-  strokePolyline(project, daySeg, {color:'var(--gold)', width:3});
-  ctx.restore();
-
-  // Hour labels (every hour)
-  ctx.font='600 12px Inter, system-ui, sans-serif'; ctx.textAlign='center';
-  for(const pt of path){
-    if(pt.t.getMinutes()!==0) continue;
-    const v= enuFromAzAlt(pt.azN, pt.alt);
-    const p=project(v); if(!p.vis) continue;
-    const label=pt.t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    ctx.save(); ctx.lineWidth=4; ctx.strokeStyle='var(--edge)'; ctx.fillStyle='var(--ink)';
-    ctx.strokeText(label,p.x,p.y-10); ctx.fillText(label,p.x,p.y-10);
-    ctx.restore();
-    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2);
-    ctx.fillStyle='rgba(255,255,255,.92)'; ctx.fill();
-  }
-
-  // “Now” marker
-  const now=new Date();
-  const posNow=SunCalc.getPosition(now, lat, lng);
-  const azNow=(rad2deg(posNow.azimuth)+180+360)%360;
-  const altNow=rad2deg(posNow.altitude)+refractLift(rad2deg(posNow.altitude));
-  const pNow=makeProjector(basis, HFOV, vFOV, w, h)( enuFromAzAlt(azNow, altNow) );
-  if(pNow.vis){
-    ctx.save(); ctx.shadowColor='rgba(255,200,0,.75)'; ctx.shadowBlur=18; ctx.fillStyle='rgba(255,200,0,1)';
-    ctx.beginPath(); ctx.arc(pNow.x, pNow.y, 10, 0, Math.PI*2); ctx.fill(); ctx.restore();
-    ctx.fillStyle='var(--ink)'; ctx.font='700 12px Inter'; ctx.textAlign='center';
-    ctx.fillText('Now', pNow.x, pNow.y-16);
-  } else {
-    const x=clamp(pNow.x,18,w-18), y=clamp(pNow.y,18,h-18);
-    const ang=Math.atan2(pNow.y-y, pNow.x-x);
-    ctx.save(); ctx.translate(x,y); ctx.rotate(ang); ctx.fillStyle='rgba(255,200,0,1)';
-    ctx.beginPath(); ctx.moveTo(-10,-8); ctx.lineTo(14,0); ctx.lineTo(-10,8); ctx.closePath(); ctx.fill(); ctx.restore();
-  }
-
-  raf=requestAnimationFrame(draw);
-}
+bNorth.onclick = ()=>{ headingOffset = (360 - smoothH) % 360; log('🧭 North set. headingOffset=', headingOffset.toFixed(1)); };
 
 /* ===== Start AR ===== */
 $('bAR').onclick=()=>{
@@ -343,19 +368,21 @@ $('bAR').onclick=()=>{
   if(!stream || lat==null){ log('❌ Missing prerequisites'); return; }
   cv.width=vid.videoWidth||innerWidth; cv.height=vid.videoHeight||innerHeight;
   computeVFOV();
-  buildFullPath();
-  pitchZero = smoothP; // baseline; tap Level to refine
+  buildFullPath(); buildHorizon();
+  // initial baselines
+  pitchZero = smoothP;
+  headingOffset = 0; // optional: ask user to tap "Set North" if compass drift
   if(raf) cancelAnimationFrame(raf);
   draw();
   arActive=true; $('bAR').disabled=true;
   statusEl.textContent='AR Active'; log('🎉 AR started');
 };
 
-/* ===== Buttons & debug ===== */
+/* ===== Debug UI ===== */
 toggleDbg.onclick=()=>{ const open=dbg.classList.toggle('open'); toggleDbg.textContent=open?'▼':'▲'; };
 $('bCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(dbg.textContent); log('📋 Logs copied'); }catch(e){ log('❌ Copy failed', e.message); } };
 
-/* ===== Lens init ===== */
+/* ===== Init ===== */
 HFOV=parseFloat(selLens.value);
 
 /* ===== Cleanup ===== */
