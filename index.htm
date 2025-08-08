@@ -13,14 +13,14 @@
     --gold2: rgba(255,180,0,.95);
     --night: rgba(200,200,200,.38);
     --ink:   rgba(255,255,255,.92);
-    --muted: rgba(255,255,255,.65);
+    --muted: rgba(255,255,255,.70);
     --edge:  rgba(0,0,0,.55);
   }
   html,body{margin:0;height:100%;background:#000;color:#fff;font:14px/1.45 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
   video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   video{z-index:0} canvas{z-index:1}
 
-  /* Top status + compass */
+  /* Topbar: compass + status + quick controls */
   #topbar{
     position:fixed; left:12px; right:12px; top:calc(env(safe-area-inset-top) + 10px);
     display:flex; align-items:center; gap:8px; z-index:3;
@@ -31,13 +31,20 @@
     padding:8px 12px; font-weight:600; box-shadow:0 4px 18px rgba(0,0,0,.35);
     white-space:nowrap;
   }
-  #status{flex:1; text-align:center}
   #compass{display:flex; gap:10px; align-items:center}
   #compass .rose{width:34px;height:34px;border-radius:50%;position:relative;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
   #compass .needle{position:absolute;left:50%;top:50%;width:2px;height:70%;background:var(--gold);transform-origin:50% 85%;border-radius:2px;box-shadow:0 0 12px var(--gold2)}
   #compass .txt{font-size:12px;color:var(--muted);min-width:64px;text-align:right}
+  #status{flex:1; text-align:center}
+  #quick{
+    display:flex; gap:6px; align-items:center;
+  }
+  #quick select, #quick button.small{
+    appearance:none;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:#1e1e1e;color:#fff;
+    font-weight:600;letter-spacing:.2px;font-size:12px;padding:8px 10px;
+  }
 
-  /* Controls */
+  /* Bottom controls */
   #controls{
     position:fixed; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom) + 132px);
     display:flex; gap:8px; z-index:3; background:var(--glass); border:1px solid rgba(255,255,255,.08);
@@ -54,13 +61,8 @@
   #brand{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom) + 100px);color:#c9c9c9;font-size:11px;opacity:.85;z-index:3;text-shadow:0 1px 10px rgba(0,0,0,.6)}
 
   /* Debug (collapsible) */
-  #debugWrap{
-    position:fixed; left:0; right:0; bottom:0; z-index:2;
-    background:rgba(0,0,0,.84); border-top:1px solid rgba(255,255,255,.06);
-  }
-  #debugBar{
-    display:flex; align-items:center; justify-content:space-between; padding:6px 10px; color:#8cf; font:12px/1.25 ui-monospace,Menlo,Consolas,monospace;
-  }
+  #debugWrap{position:fixed; left:0; right:0; bottom:0; z-index:2; background:rgba(0,0,0,.84); border-top:1px solid rgba(255,255,255,.06)}
+  #debugBar{display:flex; align-items:center; justify-content:space-between; padding:6px 10px; color:#8cf; font:12px/1.25 ui-monospace,Menlo,Consolas,monospace}
   #debug{max-height:0; overflow:auto; margin:0; padding:0 10px 8px 10px; color:#8cf; font:12px/1.25 ui-monospace,Menlo,Consolas,monospace; white-space:pre; transition:max-height .25s ease}
   #debug.open{max-height:120px}
   #toggleDbg{background:transparent;border:0;color:#8cf;font-weight:700}
@@ -76,6 +78,17 @@
       <div class="txt" id="hdgTxt">H: —°</div>
     </div>
     <div id="status" class="pill">Ready</div>
+    <div id="quick" class="pill">
+      <select id="lens">
+        <option value="65">Wide</option>
+        <option value="120">Ultra-wide</option>
+        <option value="34">2× / Tele</option>
+      </select>
+      <button id="bLevel" class="small">Level Horizon</button>
+      <label style="display:flex;align-items:center;gap:6px;font-weight:600;color:var(--muted);">
+        <input type="checkbox" id="chkRefrac" checked /> Refraction
+      </label>
+    </div>
   </div>
 
   <div id="brand">o4-mini-high • made with GPT-5</div>
@@ -103,6 +116,7 @@ const $ = id => document.getElementById(id);
 const vid=$('vid'), cv=$('cv'), ctx=cv.getContext('2d');
 const statusEl=$('status'), dbg=$('debug'), toggleDbg=$('toggleDbg');
 const needle=$('needle'), hdgTxt=$('hdgTxt');
+const selLens=$('lens'), bLevel=$('bLevel'), chkRefrac=$('chkRefrac');
 const log=(...a)=>{ dbg.textContent+=a.join(' ')+'\n'; dbg.scrollTop=dbg.scrollHeight; };
 
 /* ---------- State ---------- */
@@ -112,13 +126,13 @@ let rawH=0, rawP=0, rawR=0;
 let smoothH=0, smoothP=0, smoothR=0;
 const SMOOTH=0.12;
 
-const HFOV=65;  // iPhone 15 wide-ish. Adjust if you're on ultra-wide (≈120) or 2x (≈34).
-let vFOV=45;    // computed from aspect at runtime
+let HFOV=65;  // set by lens select
+let vFOV=45;  // computed from aspect at runtime
 
 let path=[];    // full 24h [{t, azN, azU, alt}]
 let raf=null, arActive=false;
 
-let pitchZero=0;  // auto-levelling baseline captured at AR start
+let pitchZero=0;  // user-set baseline for horizon (via Level Horizon)
 
 /* ---------- Utils ---------- */
 const rad2deg=r=>r*180/Math.PI, deg2rad=d=>d*Math.PI/180;
@@ -141,6 +155,16 @@ function unwrap(seq){
 function shortestDelta(a,b){ return ((a-b+540)%360)-180; } // [-180,180)
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 
+/* Simple atmospheric refraction near horizon (~0.83°) */
+function refractLift(altDeg, use){
+  if(!use) return 0;
+  // Apply full 0.833° below ~5° alt, taper to zero by ~10°
+  const a = altDeg;
+  if (a >= 10) return 0;
+  if (a <= 5)  return 0.833;
+  return 0.833 * (1 - (a-5)/5);
+}
+
 /* ---------- Camera ---------- */
 $('bCam').onclick = async () => {
   try{
@@ -149,7 +173,7 @@ $('bCam').onclick = async () => {
     vid.srcObject=stream; await vid.play();
     cv.width=vid.videoWidth||innerWidth; cv.height=vid.videoHeight||innerHeight;
     computeVFOV();
-    statusEl.textContent='Camera OK';
+    statusEl.textContent=`Camera OK`;
     log('✅ Camera OK', cv.width+'×'+cv.height, 'vFOV≈', vFOV.toFixed(1));
     $('bGeo').disabled=false;
   }catch(e){ statusEl.textContent='Camera error'; log('❌ Camera ERR', e.message); }
@@ -176,9 +200,9 @@ function onOri(e){
   smoothH = smoothH*(1-SMOOTH) + rawH*SMOOTH;
   smoothP = smoothP*(1-SMOOTH) + rawP*SMOOTH;
   smoothR = smoothR*(1-SMOOTH) + rawR*SMOOTH;
-  statusEl.textContent = `H:${smoothH.toFixed(1)}°  P:${(smoothP-pitchZero).toFixed(1)}°`;
   hdgTxt.textContent = `H: ${Math.round(smoothH)}°`;
   needle.style.transform = `translate(-50%,-85%) rotate(${smoothH}deg)`;
+  statusEl.textContent = `H:${smoothH.toFixed(1)}°  P:${(smoothP-pitchZero).toFixed(1)}°`;
 }
 $('bGyro').onclick = () => {
   statusEl.textContent='Enabling motion…';
@@ -193,6 +217,19 @@ $('bGyro').onclick = () => {
     addEventListener('deviceorientation', onOri);
     $('bAR').disabled=false; statusEl.textContent='Motion OK'; log('✅ Gyro OK (no prompt)');
   }
+};
+
+/* ---------- Lens / FOV ---------- */
+selLens.onchange = ()=>{
+  HFOV = parseFloat(selLens.value);
+  computeVFOV();
+  log('🔁 Lens FOV set', HFOV, 'vFOV≈', vFOV.toFixed(1));
+};
+
+/* ---------- Level Horizon ---------- */
+bLevel.onclick = ()=>{
+  pitchZero = smoothP;
+  log('🧭 Horizon leveled. pitchZero=', pitchZero.toFixed(2));
 };
 
 /* ---------- Build full 24h path ---------- */
@@ -217,22 +254,22 @@ function draw(){
   const w=cv.width, h=cv.height;
   ctx.clearRect(0,0,w,h);
 
-  // Horizon with roll + auto-levelling baseline
+  // Horizon with roll + leveled pitch
   const effPitch = smoothP - pitchZero;
   const centerY  = (0.5 - (effPitch / vFOV)) * h;
   const tilt     = deg2rad(smoothR);
   ctx.save();
   ctx.translate(w/2, centerY);
   ctx.rotate(tilt);
-  ctx.strokeStyle='rgba(255,255,255,.72)'; ctx.lineWidth=2;
+  ctx.strokeStyle='rgba(255,255,255,.78)'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(-w,0); ctx.lineTo(w,0); ctx.stroke();
-  // tiny ticks
+  // small ticks
   ctx.globalAlpha=.7;
   for(let d=-20; d<=20; d+=5){ if(d===0) continue; ctx.beginPath(); ctx.moveTo(-8, d*(-h/vFOV)); ctx.lineTo(8, d*(-h/vFOV)); ctx.stroke(); }
   ctx.restore();
 
   // Projection (linear-with-FOV for iOS stability)
-  const halfH=HFOV/2, halfV=vFOV/2, visPad=1.35; // forgiving pad to avoid vanish at edges
+  const halfH=HFOV/2, halfV=vFOV/2, visPad=1.8; // more forgiving to avoid vanishing at extremes
   const proj=(rAz,rAlt)=>({
     x:(0.5 + (rAz/HFOV))*w,
     y:(0.5 - (rAlt/vFOV))*h,
@@ -244,11 +281,13 @@ function draw(){
     ctx.lineWidth=3; ctx.strokeStyle=color; ctx.setLineDash(dashed?[6,6]:[]);
     ctx.beginPath(); let drawing=false; let prevX=null;
     for(const pt of list){
-      const rAz = shortestDelta(pt.azN, smoothH);
-      const rAlt= pt.alt - effPitch;
+      // apply atmospheric refraction lift near horizon to better match what you see
+      const altAdj = pt.alt + refractLift(pt.alt, chkRefrac.checked);
+      const rAz  = shortestDelta(pt.azN, smoothH);
+      const rAlt = altAdj - effPitch;
       const p=proj(rAz,rAlt);
       if(!p.vis){ if(drawing){ ctx.stroke(); drawing=false; prevX=null; } continue; }
-      if(drawing && prevX!=null && Math.abs(p.x-prevX)>w*0.35){ ctx.stroke(); ctx.beginPath(); drawing=false; }
+      if(drawing && prevX!=null && Math.abs(p.x-prevX)>w*0.45){ ctx.stroke(); ctx.beginPath(); drawing=false; }
       if(!drawing){ ctx.moveTo(p.x,p.y); drawing=true; } else { ctx.lineTo(p.x,p.y); }
       prevX=p.x;
     }
@@ -256,7 +295,7 @@ function draw(){
     ctx.setLineDash([]);
   }
 
-  // Segments: day (over), night (under)
+  // Split day/night
   const day=[], night=[]; let curD=[], curN=[];
   for(const pt of path){
     if(pt.alt>0){ if(curN.length){ night.push(curN); curN=[]; } curD.push(pt); }
@@ -264,23 +303,22 @@ function draw(){
   }
   if(curD.length) day.push(curD); if(curN.length) night.push(curN);
 
-  // Night below, day above
+  // Night below, day above (with subtle glow)
   night.forEach(s=>strokeSegment(s,'var(--night)',true));
-  // add a subtle gold glow under the day path
   ctx.save(); ctx.shadowColor='rgba(255,180,0,.35)'; ctx.shadowBlur=12;
   day.forEach(s=>strokeSegment(s,'var(--gold)',false));
   ctx.restore();
 
-  // Hour labels (every 1h)
+  // Hour labels each hour
   ctx.font='600 12px Inter, system-ui, sans-serif'; ctx.textAlign='center';
   for(const pt of path){
     if(pt.t.getMinutes()!==0) continue;
+    const altAdj = pt.alt + refractLift(pt.alt, chkRefrac.checked);
     const rAz = shortestDelta(pt.azN, smoothH);
-    const rAlt= pt.alt - effPitch;
+    const rAlt= altAdj - effPitch;
     const p=proj(rAz,rAlt); if(!p.vis) continue;
     const label=pt.t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    ctx.save();
-    ctx.lineWidth=4; ctx.strokeStyle='var(--edge)'; ctx.fillStyle='var(--ink)';
+    ctx.save(); ctx.lineWidth=4; ctx.strokeStyle='var(--edge)'; ctx.fillStyle='var(--ink)';
     ctx.strokeText(label,p.x,p.y-10); ctx.fillText(label,p.x,p.y-10);
     ctx.restore();
     ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2);
@@ -291,7 +329,9 @@ function draw(){
   const now = new Date();
   const posNow = SunCalc.getPosition(now, lat, lng);
   const azNow  = sunAzFromNorthCW(posNow.azimuth);
-  const altNow = rad2deg(posNow.altitude);
+  let  altNow  = rad2deg(posNow.altitude);
+  altNow += refractLift(altNow, chkRefrac.checked);
+
   const rAzNow = shortestDelta(azNow, smoothH);
   const rAltNow= altNow - effPitch;
   const pNow   = proj(rAzNow, rAltNow);
@@ -326,7 +366,7 @@ $('bAR').onclick=()=>{
   cv.width=vid.videoWidth||innerWidth; cv.height=vid.videoHeight||innerHeight;
   computeVFOV();
   buildFullPath();
-  // capture pitch baseline so horizon "sticks" when you start
+  // default baseline: current pitch — quick tap “Level Horizon” any time to correct
   pitchZero = smoothP;
   if(raf) cancelAnimationFrame(raf);
   draw();
@@ -340,6 +380,9 @@ toggleDbg.onclick = ()=>{
   toggleDbg.textContent = open ? '▼' : '▲';
 };
 $('bCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(dbg.textContent); log('📋 Logs copied'); }catch(e){ log('❌ Copy failed', e.message); } };
+
+/* ---------- Lens init ---------- */
+HFOV = parseFloat(selLens.value);
 
 /* ---------- Cleanup ---------- */
 addEventListener('beforeunload',()=>{ if(stream) stream.getTracks().forEach(t=>t.stop()); if(raf) cancelAnimationFrame(raf); });
