@@ -91,8 +91,7 @@
       <strong>Debug</strong>
       <button id="toggleDbg">▲</button>
     </div>
-    <pre id="debug">[ready]
-</pre>
+    <pre id="debug">[ready]</pre>
   </div>
 
 <script>
@@ -101,7 +100,7 @@ const $ = id => document.getElementById(id);
 const vid=$('vid'), cv=$('cv'), ctx=cv.getContext('2d');
 const statusEl=$('status'), dbg=$('debug'), toggleDbg=$('toggleDbg');
 const selLens=$('lens'), bLevel=$('bLevel'), bNorth=$('bNorth');
-const log=(...a)=>{ dbg.textContent+=a.join(' ')+'\n'; dbg.scrollTop=dbg.scrollHeight; };
+const log=(...a)=>{ dbg.textContent+=a.join(' ')+'\\n'; dbg.scrollTop=dbg.scrollHeight; };
 
 /* ===== State ===== */
 let stream;
