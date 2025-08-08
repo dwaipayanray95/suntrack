@@ -12,9 +12,9 @@
     --gold:  rgba(255,215,0,.95);
     --night: rgba(200,200,200,.35);
   }
-  html,body{margin:0;height:100%;background:#000;color:#fff;font:14px/1.4 system-ui,-apple-system,Segoe UI,Inter,Roboto,sans-serif;overflow:hidden}
+  html,body{margin:0;height:100%;background:#000;color:#fff;font:14px/1.45 system-ui,-apple-system,Segoe UI,Inter,Roboto,sans-serif;overflow:hidden}
   video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  video{z-index:0}canvas{z-index:1}
+  video{z-index:0} canvas{z-index:1}
 
   /* Top status pill */
   #status{
@@ -24,12 +24,13 @@
     border:1px solid rgba(255,255,255,.08);
     border-radius:999px; padding:8px 14px; z-index:3; font-weight:600; font-size:13px;
     box-shadow:0 4px 18px rgba(0,0,0,.35);
+    white-space:nowrap;
   }
 
-  /* Bottom control bar */
+  /* Controls sit above the debug bar */
   #controls{
-    position:fixed; left:10px; right:10px;
-    bottom:calc(env(safe-area-inset-bottom) + 10px);
+    position:fixed; left:12px; right:12px;
+    bottom:calc(env(safe-area-inset-bottom) + 132px);
     display:flex; gap:8px; z-index:3;
     background:var(--glass); border:1px solid rgba(255,255,255,.08);
     padding:10px; border-radius:12px; backdrop-filter:saturate(140%) blur(6px);
@@ -44,17 +45,19 @@
 
   /* Footer brand */
   #brand{
-    position:fixed; left:12px; bottom:calc(env(safe-area-inset-bottom) + 64px);
-    color:#c9c9c9; font-size:11px; opacity:.8; z-index:3;
-    text-shadow:0 1px 10px rgba(0,0,0,.6);
+    position:fixed; left:16px;
+    bottom:calc(env(safe-area-inset-bottom) + 100px);
+    color:#c9c9c9; font-size:11px; opacity:.85; z-index:3;
+    text-shadow:0 1px 10px rgba(0,0,0,.6)
   }
 
-  /* Debug */
+  /* Debug bar at bottom */
   #debug{
     position:fixed; left:0; right:0; bottom:0;
-    max-height:120px; overflow:auto; margin:0; padding:6px 10px;
-    background:rgba(0,0,0,.82); color:#8cf; font:12px/1.25 ui-monospace,Menlo,Consolas,monospace; z-index:2; white-space:pre;
-    border-top:1px solid rgba(255,255,255,.06);
+    height:120px; overflow:auto; margin:0; padding:6px 10px;
+    background:rgba(0,0,0,.84); color:#8cf;
+    font:12px/1.25 ui-monospace,Menlo,Consolas,monospace;
+    z-index:2; white-space:pre; border-top:1px solid rgba(255,255,255,.06)
   }
 </style>
 </head>
@@ -76,237 +79,224 @@
 </pre>
 
 <script>
-/* ===== DOM, logging ===== */
+/* ---------- DOM & logging ---------- */
 const $ = id => document.getElementById(id);
-const vid = $('vid'), cv=$('cv'), ctx=cv.getContext('2d');
-const statusEl = $('status'), dbg=$('debug');
-const log=(...a)=>{ dbg.textContent+=a.join(' ')+'\n'; dbg.scrollTop=dbg.scrollHeight; };
+const vid = $('vid'), cv = $('cv'), ctx = cv.getContext('2d');
+const statusEl = $('status'), dbg = $('debug');
+const log = (...a)=>{ dbg.textContent += a.join(' ') + '\n'; dbg.scrollTop = dbg.scrollHeight; };
 
-/* ===== State ===== */
+/* ---------- State ---------- */
 let stream;
 let lat=null, lng=null;
 let rawH=0, rawP=0, smoothH=0, smoothP=0;
-const SMOOTH=0.12;
-const HFOV=65; // ~iPhone 15 wide (approx)
-let vFOV=45;   // computed from aspect
-let path=[];   // full 24h [{t, azN, alt}]
-let raf;
+const SMOOTH = 0.12;
+const HFOV = 65;    // iPhone 15 wide-ish; tweak if needed
+let vFOV = 45;      // computed from aspect
+let path = [];      // full 24h [{t, azN, azU, alt}]
+let raf = null;
+let arActive = false;
 
-/* ===== Utils ===== */
-const rad2deg=r=>r*180/Math.PI, deg2rad=d=>d*Math.PI/180;
+/* ---------- Utils ---------- */
+const rad2deg = r => r*180/Math.PI, deg2rad = d => d*Math.PI/180;
 function computeVFOV(){
-  const w=cv.width||innerWidth, h=cv.height||innerHeight;
-  vFOV = 2*Math.atan(Math.tan(deg2rad(HFOV/2))*(h/w))*180/Math.PI;
+  const w = cv.width || innerWidth, h = cv.height || innerHeight;
+  vFOV = 2 * Math.atan(Math.tan(deg2rad(HFOV/2)) * (h/w)) * 180/Math.PI;
 }
 function sunAzFromNorthCW(azRad){
-  // SunCalc azimuth: from SOUTH, positive to WEST.
-  // Convert -> from NORTH, clockwise.
+  // SunCalc azimuth is from SOUTH, + to WEST. Convert to NORTH-clockwise.
   return (rad2deg(azRad) + 180 + 360) % 360;
 }
-function unwrapAzimuth(seq){
-  // turn [a0,a1,...] into continuous values minimizing jumps by ±360
+function unwrapAz(seq){
   if(!seq.length) return [];
   const out=[seq[0]];
   for(let i=1;i<seq.length;i++){
-    let a = seq[i];
-    let prev = out[i-1];
+    let a = seq[i], prev = out[i-1];
     while(a - prev > 180) a -= 360;
     while(a - prev < -180) a += 360;
     out.push(a);
   }
   return out;
 }
-/* Perspective projection onto screen (avoid linear angle mapping) */
-function angleToScreen(rAzDeg, rAltDeg, w, h){
-  const halfH=HFOV/2, halfV=vFOV/2;
-  // reject extreme angles (avoid tan blowup in-view)
-  if(Math.abs(rAzDeg) > 89.9 || Math.abs(rAltDeg) > 89.9) return {vis:false};
-  const x = 0.5 + Math.tan(deg2rad(rAzDeg)) / (2*Math.tan(deg2rad(halfH)));
-  const y = 0.5 - Math.tan(deg2rad(rAltDeg)) / (2*Math.tan(deg2rad(halfV)));
-  const sx = x*w, sy = y*h;
-  const vis = x>=-0.2 && x<=1.2 && y>=-0.2 && y<=1.2; // tolerant bounds
-  return {x:sx, y:sy, vis};
-}
+function rel(a,b){ let d=a-b; d=(d+540)%360-180; return d; }
 
-/* ===== Permissions ===== */
-$('bCam').onclick = async ()=>{
-  try{
-    statusEl.textContent='Opening camera…';
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+/* ---------- Camera ---------- */
+$('bCam').onclick = async () => {
+  try {
+    statusEl.textContent = 'Opening camera…';
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
     vid.srcObject = stream; await vid.play();
-    cv.width = vid.videoWidth || innerWidth;
+    cv.width  = vid.videoWidth  || innerWidth;
     cv.height = vid.videoHeight || innerHeight;
     computeVFOV();
-    statusEl.textContent='Camera OK';
+    statusEl.textContent = 'Camera OK';
     log('✅ Camera OK', cv.width+'×'+cv.height, 'vFOV≈', vFOV.toFixed(1));
-    $('bGeo').disabled=false;
-  }catch(e){ statusEl.textContent='Camera error'; log('❌ Camera ERR', e.message); }
+    $('bGeo').disabled = false;
+  } catch(e){
+    statusEl.textContent = 'Camera error'; log('❌ Camera ERR', e.message);
+  }
 };
-$('bGeo').onclick = ()=>{
-  statusEl.textContent='Getting location…';
+
+/* ---------- Geolocation ---------- */
+$('bGeo').onclick = () => {
+  statusEl.textContent = 'Getting location…';
   navigator.geolocation.getCurrentPosition(p=>{
-    lat=p.coords.latitude; lng=p.coords.longitude;
-    statusEl.textContent='Location OK';
+    lat = p.coords.latitude; lng = p.coords.longitude;
+    statusEl.textContent = 'Location OK';
     log('✅ Geo OK', lat.toFixed(5), lng.toFixed(5));
-    $('bGyro').disabled=false;
-  }, e=>{ statusEl.textContent='Location error'; log('❌ Geo ERR', e.message); },
-  {enableHighAccuracy:true, timeout:10000});
+    $('bGyro').disabled = false;
+  }, err=>{
+    statusEl.textContent = 'Location error'; log('❌ Geo ERR', err.message);
+  }, { enableHighAccuracy:true, timeout:10000 });
 };
+
+/* ---------- Orientation ---------- */
 function onOri(e){
-  const h = (e.webkitCompassHeading!=null) ? e.webkitCompassHeading : (360 - (e.alpha||0));
-  const p = (e.beta||0) - 90;
+  const h = (e.webkitCompassHeading != null) ? e.webkitCompassHeading : (360 - (e.alpha||0));
+  const p = (e.beta||0) - 90;  // 0 ≈ horizon in portrait
   rawH=(h+360)%360; rawP=p;
   smoothH = smoothH*(1-SMOOTH) + rawH*SMOOTH;
   smoothP = smoothP*(1-SMOOTH) + rawP*SMOOTH;
   statusEl.textContent = `H:${smoothH.toFixed(1)}°  P:${smoothP.toFixed(1)}°`;
 }
-$('bGyro').onclick = ()=>{
-  statusEl.textContent='Enabling motion…';
-  if(typeof DeviceOrientationEvent?.requestPermission==='function'){
+$('bGyro').onclick = () => {
+  statusEl.textContent = 'Enabling motion…';
+  if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission().then(s=>{
-      if(s==='granted'){
+      if (s==='granted'){
         addEventListener('deviceorientation', onOri);
-        $('bAR').disabled=false; statusEl.textContent='Motion OK'; log('✅ Gyro OK');
-      }else{ statusEl.textContent='Motion denied'; log('❌ Gyro DENIED'); }
+        $('bAR').disabled = false;
+        statusEl.textContent = 'Motion OK'; log('✅ Gyro OK');
+      } else { statusEl.textContent='Motion denied'; log('❌ Gyro DENIED'); }
     }).catch(err=>{ statusEl.textContent='Motion error'; log('❌ Gyro ERR', err); });
-  }else{
+  } else {
     addEventListener('deviceorientation', onOri);
-    $('bAR').disabled=false; statusEl.textContent='Motion OK'; log('✅ Gyro OK (no prompt)');
+    $('bAR').disabled = false; statusEl.textContent = 'Motion OK';
+    log('✅ Gyro OK (no prompt)');
   }
 };
 
-/* ===== Build full 24h path (local date) ===== */
+/* ---------- Build full 24h path ---------- */
 function buildFullPath(){
-  path.length=0;
+  path.length = 0;
   const now = new Date();
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
-  const dayEnd   = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1); // next midnight
+  const dayEnd   = new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1);
+
   const t = new Date(dayStart);
-  // sample every 5 minutes for smooth curve
   while(t <= dayEnd){
     const pos = SunCalc.getPosition(t, lat, lng);
     path.push({ t: new Date(t), azN: sunAzFromNorthCW(pos.azimuth), alt: rad2deg(pos.altitude) });
-    t.setMinutes(t.getMinutes()+5);
+    t.setMinutes(t.getMinutes()+5); // smooth curve
   }
-  // unwrap azimuth for smooth drawing
-  const unwrapped = unwrapAzimuth(path.map(p=>p.azN));
-  for(let i=0;i<path.length;i++) path[i].azU = unwrapped[i];
+  const un = unwrapAz(path.map(p=>p.azN));
+  for(let i=0;i<path.length;i++) path[i].azU = un[i];
   log('🎯 24h path points:', path.length);
 }
 
-/* ===== Drawing ===== */
+/* ---------- Rendering ---------- */
 function draw(){
   const w=cv.width, h=cv.height;
   ctx.clearRect(0,0,w,h);
 
-  const halfH=HFOV/2, halfV=vFOV/2;
-
-  // Horizon (pitch-only for stability)
-  const horizonY = (0.5 - (-smoothP)/halfV) * h;
-  // subtle gradient glow
+  // Horizon (pitch only for stability)
+  const horizonY = (0.5 - (smoothP / vFOV)) * h;
   const grad = ctx.createLinearGradient(0,horizonY-12,0,horizonY+12);
-  grad.addColorStop(0,'rgba(255,255,255,.0)');
+  grad.addColorStop(0,'rgba(255,255,255,0)');
   grad.addColorStop(0.5,'rgba(255,255,255,.55)');
-  grad.addColorStop(1,'rgba(255,255,255,.0)');
-  ctx.fillStyle=grad; ctx.fillRect(0, Math.max(0,horizonY-12), w, 24);
+  grad.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = grad; ctx.fillRect(0, Math.max(0,horizonY-12), w, 24);
 
-  // Split into day/night segments (alt>0 daytime)
-  // DAY: solid gold   NIGHT: dashed gray
-  function strokeSegment(seg, style){
-    if(seg.length<2) return;
-    ctx.lineWidth = 3;
-    ctx.setLineDash(style==='night'?[6,6]:[]);
-    ctx.strokeStyle = style==='night' ? getComputedStyle(document.documentElement)
-      .getPropertyValue('--night') : getComputedStyle(document.documentElement)
-      .getPropertyValue('--gold');
+  // Split into day/night chunks based on altitude
+  const daySeg=[], nightSeg=[]; let curD=[], curN=[];
+  for(const pt of path){
+    if (pt.alt>0){ if(curN.length){ nightSeg.push(curN); curN=[]; } curD.push(pt); }
+    else         { if(curD.length){ daySeg.push(curD);   curD=[]; } curN.push(pt); }
+  }
+  if(curD.length) daySeg.push(curD); if(curN.length) nightSeg.push(curN);
+
+  // Helper to project to screen (linear angle mapping – stable on iOS)
+  const halfH=HFOV/2, halfV=vFOV/2;
+  const proj = (rAz, rAlt)=>{
+    return {
+      x:(0.5 + (rAz/HFOV)) * w,
+      y:(0.5 - (rAlt/vFOV)) * h,
+      vis: Math.abs(rAz)<=halfH*1.15 && Math.abs(rAlt)<=halfV*1.15
+    };
+  };
+
+  function strokeSeg(list, color, dashed=false){
+    if(!list.length) return;
+    ctx.lineWidth = 3; ctx.strokeStyle = color;
+    ctx.setLineDash(dashed ? [6,6] : []);
     ctx.beginPath();
-    let started=false, prev={x:null,y:null};
-    for(const p of seg){
-      const rAz = p.azU - smoothH;              // relative azimuth (unwrapped)
-      const rAlt = p.alt - smoothP;             // relative altitude
-      const sp = angleToScreen(rAz, rAlt, w, h);
-      if(!sp.vis){ started=false; prev.x=null; continue; }
-      // if a sudden jump on screen (wrap), split
-      if(started && prev.x!=null && Math.abs(sp.x - prev.x) > w*0.35){
-        ctx.stroke(); ctx.beginPath(); started=false;
+    let drawing=false, prevX=null;
+    for(const pt of list){
+      const rAz = (pt.azU - smoothH);
+      const rAlt= (pt.alt  - smoothP);
+      const p = proj(rAz, rAlt);
+      if(!p.vis){ if(drawing){ ctx.stroke(); drawing=false; prevX=null; } continue; }
+      if(drawing && prevX!=null && Math.abs(p.x - prevX) > w*0.35){ // big jump → split
+        ctx.stroke(); ctx.beginPath(); drawing=false;
       }
-      if(!started){ ctx.moveTo(sp.x, sp.y); started=true; }
-      else{ ctx.lineTo(sp.x, sp.y); }
-      prev=sp;
+      if(!drawing){ ctx.moveTo(p.x, p.y); drawing=true; }
+      else { ctx.lineTo(p.x, p.y); }
+      prevX = p.x;
     }
-    ctx.stroke();
+    if(drawing) ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  // Build day & night chunks in screen order
-  const daySeg=[], nightSeg=[];
-  let curDay=[], curNight=[];
-  for(const pt of path){
-    if(pt.alt>0){ // day
-      if(curNight.length){ nightSeg.push(curNight); curNight=[]; }
-      curDay.push(pt);
-    }else{        // night
-      if(curDay.length){ daySeg.push(curDay); curDay=[]; }
-      curNight.push(pt);
-    }
-  }
-  if(curDay.length) daySeg.push(curDay);
-  if(curNight.length) nightSeg.push(curNight);
+  // Draw night under, day over
+  nightSeg.forEach(seg=>strokeSeg(seg,'var(--night)',true));
+  daySeg.forEach(seg=>strokeSeg(seg,'var(--gold)',false));
 
-  // Draw night (under), then day (over)
-  nightSeg.forEach(seg=>strokeSegment(seg,'night'));
-  daySeg.forEach(seg=>strokeSegment(seg,'day'));
-
-  // Hour markers every hour (local time)
-  ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.fillStyle='#fff';
+  // Hour labels (every hour local time)
+  ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
   for(const pt of path){
-    const mins = pt.t.getMinutes();
-    if(mins!==0) continue;
-    const rAz = pt.azU - smoothH;
-    const rAlt= pt.alt - smoothP;
-    const sp = angleToScreen(rAz, rAlt, w, h);
-    if(!sp.vis) continue;
-    // Label only hours (always show; night labels appear dimmer because underlay)
-    const timeStr = pt.t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    // a subtle stroke for readability
+    if(pt.t.getMinutes()!==0) continue;
+    const rAz = pt.azU - smoothH, rAlt = pt.alt - smoothP;
+    if(Math.abs(rAz)>halfH || Math.abs(rAlt)>halfV) continue;
+    const p = proj(rAz, rAlt);
+    if(!p.vis) continue;
+    const label = pt.t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     ctx.save();
-    ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,.55)';
-    ctx.strokeText(timeStr, sp.x, sp.y - 10);
-    ctx.fillText(timeStr, sp.x, sp.y - 10);
+    ctx.lineWidth=4; ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.fillStyle='#fff';
+    ctx.strokeText(label, p.x, p.y - 10); ctx.fillText(label, p.x, p.y - 10);
     ctx.restore();
-
-    // small tick
-    ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, Math.PI*2);
+    // tick
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
     ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fill();
   }
 
-  // Loop
   raf = requestAnimationFrame(draw);
 }
 
-/* ===== Start AR ===== */
-$('bAR').onclick = ()=>{
-  if(!stream || lat==null){ log('❌ Missing prerequisites'); return; }
-  cv.width = vid.videoWidth || innerWidth;
-  cv.height= vid.videoHeight|| innerHeight;
+/* ---------- Start AR ---------- */
+$('bAR').onclick = () => {
+  if (arActive) return;                 // prevent multiple loops
+  if (!stream || lat==null){ log('❌ Missing prerequisites'); return; }
+  cv.width  = vid.videoWidth  || innerWidth;
+  cv.height = vid.videoHeight || innerHeight;
   computeVFOV();
   buildFullPath();
-  if(raf) cancelAnimationFrame(raf);
+  if (raf) cancelAnimationFrame(raf);
   draw();
-  statusEl.textContent='AR Active';
+  arActive = true;
+  $('bAR').disabled = true;             // lock once started
+  statusEl.textContent = 'AR Active';
   log('🎉 AR started');
 };
 
-/* ===== Copy logs ===== */
-$('bCopy').onclick = async ()=>{
-  try{ await navigator.clipboard.writeText(dbg.textContent); log('📋 Logs copied'); }
+/* ---------- Copy logs ---------- */
+$('bCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(dbg.textContent); log('📋 Logs copied'); }
   catch(e){ log('❌ Copy failed', e.message); }
 };
 
-/* ===== Cleanup ===== */
+/* ---------- Cleanup ---------- */
 addEventListener('beforeunload', ()=>{
-  if(stream) stream.getTracks().forEach(t=>t.stop());
-  if(raf) cancelAnimationFrame(raf);
+  if (stream) stream.getTracks().forEach(t=>t.stop());
+  if (raf) cancelAnimationFrame(raf);
 });
 </script>
 </body>
